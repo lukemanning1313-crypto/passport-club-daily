@@ -24,10 +24,10 @@
     <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" stroke-width="1.2"/>
     <circle cx="50" cy="50" r="21" fill="currentColor"/>
     <path d="M31 50h38M50 30c-11 11-11 29 0 40M50 30c11 11 11 29 0 40M34 41h32M34 59h32" stroke="#f6eeda" stroke-width="1.5" fill="none"/>
-    <path id="sealTop" d="M50 50m-31 0a31 31 0 1 1 62 0" fill="none"/>
-    <path id="sealBot" d="M50 50m-34 0a34 34 0 0 0 68 0" fill="none"/>
-    <text font-size="9" font-weight="700" letter-spacing="2.2" fill="currentColor" font-family="Georgia,serif"><textPath href="#sealTop" startOffset="50%" text-anchor="middle">PASSPORT CLUB</textPath></text>
-    <text font-size="6.4" font-weight="700" letter-spacing="1.6" fill="currentColor" font-family="Georgia,serif"><textPath href="#sealBot" startOffset="50%" text-anchor="middle">EXPLORE THE WORLD</textPath></text>
+    <path id="sealTop" d="M50 81a31 31 0 1 1 0-62a31 31 0 1 1 0 62" fill="none"/>
+    <path id="sealBot" d="M50 16a34 34 0 1 0 0 68a34 34 0 1 0 0-68" fill="none"/>
+    <text font-size="8.2" font-weight="700" letter-spacing="1.5" fill="currentColor" font-family="Georgia,serif"><textPath href="#sealTop" startOffset="50%" text-anchor="middle">PASSPORT CLUB</textPath></text>
+    <text font-size="5.6" font-weight="700" letter-spacing="1.1" fill="currentColor" font-family="Georgia,serif"><textPath href="#sealBot" startOffset="50%" text-anchor="middle">EXPLORE THE WORLD</textPath></text>
   </symbol>
 </svg>
 
@@ -107,6 +107,7 @@
       <button class="btn" id="reviewBtn">Review my stops</button>
       <button class="btn" data-go="passport">My passport</button>
     </div>
+    <button class="btn" id="bonusBtn">Play a bonus trip (just for fun)</button>
   </section>
 
   <!-- ============ PASSPORT ============ -->
@@ -146,9 +147,9 @@
 <dialog id="how">
   <h2>How to play</h2>
   <ol>
-    <li><b>Five stops a day, one try.</b> Everyone gets the same five, and a new trip arrives at midnight.</li>
+    <li><b>Five stops a day, one try.</b> Everyone gets the same five, and a new trip arrives at midnight. After that, bonus trips are just for fun.</li>
     <li><b>Spin and zoom the globe,</b> tap where you think the place is, then lock in your guess.</li>
-    <li><b>The closer you are, the more points.</b> Land in the right country and you get all 100.</li>
+    <li><b>The closer you are, the more points.</b> A perfect 100 means your pin is right on the spot, and it is rare.</li>
     <li><b>Score 70 or better</b> and that country stamps your passport for good.</li>
     <li><b>Learn something at every stop,</b> then share your page with your family or class.</li>
   </ol>

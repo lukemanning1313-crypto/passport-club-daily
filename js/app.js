@@ -1,5 +1,6 @@
 import { Globe, loadWorld, FLY_ZOOM } from "./globe.js";
 import * as C from "./core.js";
+import { PHOTOS } from "./photos.js";
 /* global d3 */
 
 const $ = s => document.querySelector(s);
@@ -38,7 +39,7 @@ function startTrip(practice = false) {
   const d = today(), day = S.days[d];
   if (!practice && day?.done) { showEnd(); return; }
   G = practice
-    ? { practice: true, day: d, trip: C.practiceTrip(), results: [], mode: S.mode }
+    ? { practice: true, day: d, trip: C.bonusTrip(C.tripFor(d).map(p => p.id)), results: [], mode: day?.mode || S.mode }
     : { practice: false, day: d, trip: C.tripFor(d), results: day ? day.results : [], mode: day?.mode || S.mode };
   G.idx = G.results.length; G.revealed = false; G.pending = null; G.review = false;
   go("game"); renderStop();
@@ -46,7 +47,7 @@ function startTrip(practice = false) {
 function renderStop() {
   const p = G.trip[G.idx], w = C.weight(G.idx, G.mode);
   $("#gMode").textContent = MODE_NAME[G.mode];
-  $("#gTrip").textContent = G.review ? "Looking back" : G.practice ? "Practice trip" : `Trip #${G.day + 1}`;
+  $("#gTrip").textContent = G.review ? "Looking back" : G.practice ? "Bonus trip" : `Trip #${G.day + 1}`;
   $("#gKind").innerHTML = esc(KIND[p.kind]) + (w > 1 ? ` <span class="mult">×${w} points</span>` : "");
   $("#gQ").textContent = p.q;
   $("#gHint").textContent = G.mode === "explorer" ? "Hint: " + p.hint : "";
@@ -55,10 +56,11 @@ function renderStop() {
   $("#lockbar").hidden = true; $("#gTip").hidden = G.review;
   G.revealed = false; G.pending = null;
   globe.liftOn = false; globe.clear(); globe.setZoom(1);
+  if (PHOTOS[p.id]) new Image().src = "img/" + PHOTOS[p.id].file;   // warm the photo so it is ready at the answer
   renderStrip();
   if (G.review) revealStop(false);
 }
-const KIND = { country: "Find the country", capital: "Find the capital", landmark: "Find the landmark", nature: "Find the place" };
+const KIND = { country: "Find the country", capital: "Find the city", landmark: "Find the landmark", nature: "Find the place" };
 function renderStrip() {
   $("#gStamps").innerHTML = G.trip.map((p, i) => {
     const r = G.results[i];
@@ -99,14 +101,15 @@ function revealStop(animate) {
 }
 function renderSheet() {
   const p = G.trip[G.idx], r = G.results[G.idx], w = C.weight(G.idx, G.mode), box = $("#sheet"), open = box.classList.contains("open");
-  const last = G.idx >= 4;
+  const last = G.idx >= 4, ph = PHOTOS[p.id];
   box.innerHTML = `
-    <div class="place"><div class="flag">${p.flag}</div>
-      <div><b>${esc(p.name)}</b><span>${esc(p.sub)} · ${C.milesText(r)}</span></div>
+    <div class="place">${ph ? `<img class="thumb" src="img/${ph.file}" alt="">` : `<div class="flag">${p.flag}</div>`}
+      <div><b>${ph ? p.flag + " " : ""}${esc(p.name)}</b><span>${esc(p.sub)} · ${C.milesText(r)}</span></div>
       <div class="score ${r.score < 50 ? "low" : ""}">${r.score}<small>${w > 1 ? `×${w} = ${r.score * w}` : "OF 100"}</small></div></div>
-    ${r.inside ? "" : `<p class="landed">Your pin landed ${r.where ? "in " + esc(r.where) : "in open water"}.</p>`}
+    ${r.inside || r.where === p.country ? "" : `<p class="landed">Your pin landed ${r.where ? "in " + esc(r.where) : "in open water"}.</p>`}
     <p class="wow">${esc(p.wow)}</p>
     <div class="morebox">
+      ${ph ? `<figure class="photo"><img src="img/${ph.file}" alt="${esc(ph.article)}" loading="lazy"><figcaption><b>${esc(ph.article)}</b> · Photo: ${esc(ph.artist || "Wikimedia Commons")}, ${esc(ph.license)}, via Wikimedia Commons</figcaption></figure>` : ""}
       <ul class="facts">${p.fast.map(f => `<li><span>${esc(f[0])}</span><div>${esc(f[1])}</div></li>`).join("")}</ul>
       ${p.more.map(m => `<p class="extra">${esc(m)}</p>`).join("")}
     </div>
@@ -140,7 +143,7 @@ function showEnd() {
   go("end");
   const cv = drawCard(E); $("#cardImg").src = cv.toDataURL("image/png"); showEnd.cv = cv; showEnd.E = E;
   const ms = C.midnight(new Date(Date.now() + 864e5)) - Date.now(), h = Math.floor(ms / 36e5), m = Math.floor(ms % 36e5 / 6e4);
-  $("#nextTrip").textContent = E.practice ? "Practice trips don't count toward your passport" : `Next trip in ${h} h ${m} min`;
+  $("#nextTrip").textContent = E.practice ? "Bonus trips are for fun. They don't count toward your score, streak or passport." : `Next trip in ${h} h ${m} min`;
   $("#reviewBtn").hidden = false;
   renderEndBoards(E);
 }
@@ -180,7 +183,7 @@ function drawCard(E) {
   x.fillStyle = INK; x.textBaseline = "alphabetic";
   x.font = `700 68px ${serif}`; x.fillText("Passport Club Daily", 290, 180);
   x.font = `700 30px ${mono}`; x.fillStyle = MUTED;
-  x.fillText(`${E.practice ? "PRACTICE TRIP" : "TRIP #" + (E.day + 1)} · ${C.fmtShort(C.dayDate(E.day)).toUpperCase()} · ${MODE_NAME[E.mode].toUpperCase()}`, 292, 232);
+  x.fillText(`${E.practice ? "BONUS TRIP" : "TRIP #" + (E.day + 1)} · ${C.fmtShort(C.dayDate(E.day)).toUpperCase()} · ${MODE_NAME[E.mode].toUpperCase()}`, 292, 232);
   if (S.name) { x.font = `italic 40px ${serif}`; x.fillStyle = INK; x.fillText(`${S.name}'s passport page`, 80, 370); }
   // stamps
   E.results.forEach((r, i) => {
@@ -267,6 +270,7 @@ document.addEventListener("click", e => {
 document.querySelectorAll(".modepick button").forEach(b => b.onclick = () => { if (b.disabled) return; S.mode = b.dataset.mode; C.save(S); renderHome(); });
 $("#playBtn").onclick = () => startTrip(false);
 $("#lockBtn").onclick = lock;
+$("#bonusBtn").onclick = () => startTrip(true);
 $("#zin").onclick = () => globe.zoomBy(1.6);
 $("#zout").onclick = () => globe.zoomBy(1 / 1.6);
 $("#shareBtn").onclick = share;

@@ -23,25 +23,18 @@ export function tripFor(day) {
   const [e, m, h] = TIERS.map((t, i) => shuffled(t, 9173 + cycle * 31 + i * 7));
   return [e[(2 * k) % e.length], e[(2 * k + 1) % e.length], m[k % m.length], h[(2 * k) % h.length], h[(2 * k + 1) % h.length]];
 }
-export function practiceTrip() {
-  const s = Date.now() & 0xffff, [e, m, h] = TIERS.map((t, i) => shuffled(t, s + i));
+export function bonusTrip(avoid = []) {
+  const s = Date.now() & 0xffff, [e, m, h] = TIERS.map((t, i) => shuffled(t.filter(p => !avoid.includes(p.id)), s + i));
   return [e[0], e[1], m[0], h[0], h[1]];
 }
 
 // ---------- scoring ----------
-function params(place, mode, world) {
-  const kid = mode === "explorer", fall = kid ? 3200 : 2000;
-  const f = place.kind === "country" ? world.byId.get(place.ccn) : null;
-  // grace: a country counts as "found" a little past its middle; a city or landmark within a short drive
-  let grace = kid ? 220 : 110;
-  if (place.kind === "country") grace = Math.max(kid ? 320 : 220, f ? Math.sqrt(d3.geoArea(f) * 6371 * 6371) * .3 : 0);
-  return { f, fall, grace };
-}
+// Every target is a single spot. Only a pin within a few miles scores a perfect 100; after that the points fall away with distance.
 export function scoreGuess(place, guess, mode, world) {
-  const km = d3.geoDistance(guess, [place.lon, place.lat]) * 6371, { f, fall, grace } = params(place, mode, world);
-  const inside = !!(f && d3.geoContains(f, guess));
-  const score = inside || km <= grace ? 100 : Math.max(0, Math.round(100 * Math.exp(-(km - grace) / fall)));
-  return { km: Math.round(km), score, inside: inside || km <= grace, where: whereIs(guess, world) };
+  const km = d3.geoDistance(guess, [place.lon, place.lat]) * 6371, kid = mode === "explorer";
+  const grace = kid ? 60 : 20, fall = kid ? 2600 : 1500;
+  const score = km <= grace ? 100 : Math.min(99, Math.max(0, Math.round(100 * Math.exp(-(km - grace) / fall))));
+  return { km: Math.round(km), score, inside: km <= grace, where: whereIs(guess, world) };
 }
 export function whereIs(p, world) {
   const f = world.countries.find(c => d3.geoContains(c, p));
