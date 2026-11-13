@@ -299,6 +299,13 @@ $("#howBtn").onclick = () => $("#how").showModal();
 $("#howClose").onclick = () => { $("#how").close(); S.seenHow = true; C.save(S); };
 
 (async function boot() {
+  // Tester's back door: opening the game with ?reset=today wipes today's trip on this phone so it can be played again.
+  // Remove before a real launch, since anyone with the link could use it to replay.
+  if (new URLSearchParams(location.search).get("reset") === "today") {
+    const d = today(); delete S.days[d];
+    for (const k of Object.keys(S.stamps)) if (S.stamps[k].first === d) delete S.stamps[k];
+    C.save(S); history.replaceState(null, "", location.pathname); setTimeout(() => toast("Today's trip is reset. Play it again."), 600);
+  }
   renderHome();
   world = await loadWorld();
   globe = new Globe($("#globe"), { onTap });
