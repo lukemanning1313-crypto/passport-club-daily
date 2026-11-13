@@ -47,8 +47,8 @@
     </div>
     <button class="btn primary" id="playBtn">Start today's trip</button>
     <div class="statrow">
-      <div><b id="stStreak">0</b><span>day streak</span></div>
-      <div><b id="stCountries">0</b><span>countries stamped</span></div>
+      <div><b id="stStreak">0</b><span>streak</span></div>
+      <div><b id="stCountries">0</b><span>countries</span></div>
       <div><b id="stBest">–</b><span>best trip</span></div>
     </div>
     <nav class="homenav">
@@ -60,31 +60,26 @@
 
   <!-- ============ GAME ============ -->
   <section class="screen" id="game">
-    <header class="bar">
-      <button class="icon" data-go="home" aria-label="Back to the start">‹</button>
-      <div class="bar-mid"><span id="gMode"></span><span id="gTrip"></span></div>
-      <div class="bar-score"><b id="gTotal">0</b><span id="gMax">/ 500</span></div>
+    <div class="mapwrap"><canvas id="globe"></canvas></div>
+    <header class="ghead" id="ghead">
+      <div class="grow">
+        <button class="icon" data-go="home" aria-label="Back to the start">‹</button>
+        <span><b id="gStop">Stop 1 of 5</b> · <span id="gMode"></span><span id="gTrip"></span></span>
+        <span class="bar-score"><b id="gTotal">0</b><span id="gMax">/ 500</span></span>
+      </div>
+      <div class="kind" id="gKind"></div>
+      <div class="q" id="gQ"></div>
+      <div class="hint" id="gHint"></div>
+      <figure class="picq" id="gPicWrap" hidden><img id="gPic" alt="A picture of a place somewhere in the world"><figcaption id="gPicCredit"></figcaption></figure>
     </header>
-    <div class="prompt">
-      <div class="prompt-main">
-        <div class="kind" id="gKind"></div>
-        <div class="q" id="gQ"></div>
-        <div class="hint" id="gHint"></div>
-      </div>
-      <div class="stop">Stop<b id="gStop">1/5</b></div>
-    </div>
-    <figure class="picq" id="gPicWrap" hidden><img id="gPic" alt="A picture of a place somewhere in the world"><figcaption id="gPicCredit"></figcaption></figure>
-    <div class="mapwrap">
-      <canvas id="globe"></canvas>
-      <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button></div>
-      <div class="tip" id="gTip">Spin the globe, then tap where you think it is</div>
-      <div class="lockbar" id="lockbar" hidden>
-        <span>Tap again to move your pin</span>
-        <button class="btn primary" id="lockBtn">Lock in my guess</button>
-      </div>
+    <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button></div>
+    <div class="tip" id="gTip">Spin the globe, then tap where you think it is</div>
+    <div class="lockbar" id="lockbar" hidden>
+      <span>Tap again to move your pin</span>
+      <button class="btn primary" id="lockBtn">Lock in my guess</button>
     </div>
     <div class="sheet" id="sheet" hidden></div>
-    <div class="strip">
+    <div class="strip" id="strip">
       <div class="stamps" id="gStamps"></div>
       <div class="strip-note" id="gNote"></div>
     </div>

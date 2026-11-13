@@ -18,7 +18,7 @@ function go(screen) {
   if (screen === "home") renderHome();
   if (screen === "passport") renderPassport();
   if (screen === "groups") renderGroups();
-  if (screen === "game" && globe) globe.resize();
+  if (screen === "game" && globe) fitGlobe();
 }
 
 // ================= HOME =================
@@ -47,11 +47,11 @@ function startTrip(practice = false) {
 function renderStop() {
   const p = G.trip[G.idx], w = C.weight(G.idx, G.mode, G.trip.length), pic = p.kind === "picture", ph0 = PHOTOS[p.photo || p.id];
   $("#gMode").textContent = MODE_NAME[G.mode];
-  $("#gTrip").textContent = G.review ? "Looking back" : G.practice ? "Bonus trip" : `Trip #${G.day + 1}`;
+  $("#gTrip").textContent = G.review ? " · Looking back" : G.practice ? " · Bonus" : "";
   $("#gKind").innerHTML = esc(KIND[p.kind]) + (w > 1 ? ` <span class="mult">×${w} points</span>` : "");
   $("#gQ").textContent = p.q;
   $("#gHint").textContent = G.mode === "explorer" ? "Hint: " + p.hint : "";
-  $("#gStop").textContent = `${G.idx + 1}/${G.trip.length}`;
+  $("#gStop").textContent = `Stop ${G.idx + 1} of ${G.trip.length}`;
   // the picture stop shows only the photo; its credit names the photographer, never the place
   $("#gPicWrap").hidden = !pic; $("#gPicWrap").classList.remove("big");
   if (pic) { $("#gPic").src = "img/" + ph0.file; $("#gPicCredit").textContent = "Tap the picture to make it bigger. The photo credit comes with the answer, so it can't give the place away."; }
@@ -60,8 +60,15 @@ function renderStop() {
   G.revealed = false; G.pending = null;
   globe.liftOn = false; globe.clear(); globe.setZoom(1);
   if (ph0) new Image().src = "img/" + ph0.file;   // warm the photo so it is ready at the answer
-  renderStrip();
+  renderStrip(); fitGlobe();
   if (G.review) revealStop(false);
+}
+// tell the globe how much of the screen the header and the stamp row cover, so it centres itself in what is left
+function fitGlobe() {
+  const g = $("#game").getBoundingClientRect(); if (!g.height) return;
+  const top = $("#ghead").getBoundingClientRect().bottom - g.top, bot = g.bottom - $("#strip").getBoundingClientRect().top;
+  $("#game").style.setProperty("--head", Math.round(top) + "px");
+  globe.pad = { t: top + 4, b: bot + 4 }; globe.resize();
 }
 const KIND = { picture: "Picture stop", country: "Find the country", capital: "Find the city", landmark: "Find the landmark", nature: "Find the place" };
 function renderStrip() {
@@ -71,11 +78,11 @@ function renderStrip() {
     const ok = r.score >= C.STAMP_AT;
     return `<div class="stampd ${ok ? "" : "miss"}" style="--c:${INKS[i % 5]};--rot:${ROTS[i % 5]}deg" title="${esc(p.country)}">${p.flag}</div>`;
   }).join("");
-  $("#gStamps").style.gridTemplateColumns = `repeat(${G.trip.length}, ${G.trip.length > 5 ? 36 : 42}px)`;
+  $("#gStamps").style.gridTemplateColumns = `repeat(${G.trip.length}, 34px)`;
   $("#gTotal").textContent = C.totalOf(G.results, G.mode, G.trip.length);
   $("#gMax").textContent = "/ " + C.maxTotal(G.mode, G.trip.length);
   const n = G.results.filter(r => r && r.score >= C.STAMP_AT).length;
-  $("#gNote").innerHTML = `${n} stamp${n === 1 ? "" : "s"}<br>today`;
+  $("#gNote").textContent = `${n} stamp${n === 1 ? "" : "s"}`;
 }
 function onTap(p) {
   if (!G || G.revealed || G.review) return;
@@ -276,7 +283,9 @@ document.addEventListener("click", e => {
 document.querySelectorAll(".modepick button").forEach(b => b.onclick = () => { if (b.disabled) return; S.mode = b.dataset.mode; C.save(S); renderHome(); });
 $("#playBtn").onclick = () => startTrip(false);
 $("#lockBtn").onclick = lock;
-$("#gPicWrap").onclick = () => $("#gPicWrap").classList.toggle("big");
+$("#gPicWrap").onclick = () => { $("#gPicWrap").classList.toggle("big"); fitGlobe(); };
+$("#gPic").onload = () => { if (document.body.dataset.screen === "game") fitGlobe(); };
+addEventListener("resize", () => { if (document.body.dataset.screen === "game" && globe) fitGlobe(); });
 $("#bonusBtn").onclick = () => startTrip(true);
 $("#zin").onclick = () => globe.zoomBy(1.6);
 $("#zout").onclick = () => globe.zoomBy(1 / 1.6);

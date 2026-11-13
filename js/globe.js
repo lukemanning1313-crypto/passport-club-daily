@@ -39,7 +39,7 @@ export class Globe {
     this.cv = canvas; this.ctx = canvas.getContext("2d");
     this.interactive = interactive; this.onTap = onTap; this.stand = stand; this.spin = spin;
     this.rot = [80, -12, 0]; this.zoom = 1; this.zt = 0; this.target = null; this.liftOn = false;
-    this.pin = null; this.rev = null; this.W = 0; this.H = 0; this.raf = 0; this.pulse = 0;
+    this.pad = { t: 0, b: 0 }; this.pin = null; this.rev = null; this.W = 0; this.H = 0; this.raf = 0; this.pulse = 0;
     this.proj = d3.geoOrthographic().clipAngle(90);
     this.path = d3.geoPath(this.proj, this.ctx);
     this.buf = document.createElement("canvas"); this.bctx = this.buf.getContext("2d");
@@ -56,8 +56,9 @@ export class Globe {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.kick();
   }
-  get baseR() { return Math.max(40, Math.min(this.W, this.H - (this.stand ? 64 : 0)) / 2 - (this.stand ? 22 : 6)); }
-  get center() { return [this.W / 2, this.stand ? (this.H - 46) / 2 : this.H / 2]; }
+  get availH() { return this.H - this.pad.t - this.pad.b; }
+  get baseR() { return Math.max(40, Math.min(this.W - 4, this.availH - (this.stand ? 64 : 0)) / 2 - (this.stand ? 20 : 6)); }
+  get center() { return [this.W / 2, this.pad.t + (this.availH - (this.stand ? 46 : 0)) / 2]; }
   lift() { return this.liftOn ? Math.asin(Math.min(.9, .42 / this.zoom)) / RAD : 0; }
   aim(p) { return [-p[0], Math.max(-85, Math.min(85, -p[1] + this.lift())), 0]; }
   kick() { if (!this.raf) this.raf = requestAnimationFrame(() => this.frame()); }
@@ -66,8 +67,12 @@ export class Globe {
     if (this.zt) { this.zoom += (this.zt - this.zoom) * .14; if (Math.abs(this.zt - this.zoom) < .01) { this.zoom = this.zt; this.zt = 0; } else again = true; }
     if (rv && rv.t < 1) {             // the flight: the camera rides along from the guess to the answer
       rv.t = Math.min(1, (performance.now() - rv.t0) / rv.dur);
-      rv.at = rv.ip(rv.t); this.rot = this.aim(rv.at); this.target = null; again = true;
-      if (rv.t >= 1) { rv.at = rv.target; if (rv.done) setTimeout(rv.done, 0); }
+      // ease in and out, and on a long trip pull back so the whole globe is in view mid-flight, then come back in:
+      // you see where you were, where you are going, and what lies between
+      rv.e = rv.t * rv.t * (3 - 2 * rv.t);
+      this.zt = 0; this.zoom = Math.max(1, rv.z0 + (FLY_ZOOM - rv.z0) * rv.e - (Math.min(rv.z0, FLY_ZOOM) - rv.zmin) * Math.sin(Math.PI * rv.e));
+      rv.at = rv.ip(rv.e); this.rot = this.aim(rv.at); this.target = null; again = true;
+      if (rv.t >= 1) { rv.e = 1; rv.at = rv.target; this.zoom = FLY_ZOOM; if (rv.done) setTimeout(rv.done, 0); }
     } else if (this.target) {
       const d0 = (((this.target[0] - this.rot[0]) + 540) % 360) - 180, d1 = this.target[1] - this.rot[1];
       this.rot = [this.rot[0] + d0 * .12, this.rot[1] + d1 * .12, 0];
@@ -89,13 +94,14 @@ export class Globe {
   clear() { this.pin = null; this.rev = null; this.kick(); }
   reveal(guess, target, label, ccn, done) {
     const sep = d3.geoDistance(guess, target) / RAD;
-    this.pin = guess; this.target = null; this.zt = FLY_ZOOM;
-    this.rev = { guess, target, label, ccn, done, ip: d3.geoInterpolate(guess, target), at: guess, t: 0, t0: performance.now(), dur: Math.max(700, Math.min(6500, sep * 55)) };
+    this.pin = guess; this.target = null; this.zt = 0;
+    const zmin = Math.max(1, Math.min(FLY_ZOOM, FLY_ZOOM * 24 / Math.max(1, sep)));
+    this.rev = { guess, target, label, ccn, done, ip: d3.geoInterpolate(guess, target), at: guess, t: 0, e: 0, z0: this.zoom, zmin, t0: performance.now(), dur: Math.max(900, Math.min(7500, 1200 + sep * 50)) };
     this.kick();
   }
   showAnswer(guess, target, label, ccn) {
     this.pin = guess; this.zt = 0; this.zoom = FLY_ZOOM; this.target = null;
-    this.rev = { guess, target, label, ccn, ip: d3.geoInterpolate(guess, target), at: target, t: 1 };
+    this.rev = { guess, target, label, ccn, ip: d3.geoInterpolate(guess, target), at: target, t: 1, e: 1 };
     this.rot = this.aim(target); this.kick();
   }
   flyTo(p) { this.target = this.aim(p); this.kick(); }
@@ -188,7 +194,7 @@ export class Globe {
     g.addColorStop(0, "rgba(255,250,235,.20)"); g.addColorStop(.6, "rgba(255,255,255,0)"); g.addColorStop(1, "rgba(40,30,15,.42)");
     ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = "#3d312299"; ctx.lineWidth = 1.2; ctx.stroke();
     if (rv) {
-      const pts = []; for (let i = 0; i <= 64; i++) pts.push(rv.ip(i / 64 * rv.t));
+      const pts = []; for (let i = 0; i <= 64; i++) pts.push(rv.ip(i / 64 * rv.e));
       ctx.beginPath(); path({ type: "LineString", coordinates: pts });
       ctx.strokeStyle = RED; ctx.lineWidth = 2.4; ctx.setLineDash([7, 6]); ctx.lineCap = "round"; ctx.stroke(); ctx.setLineDash([]);
     }
@@ -197,7 +203,7 @@ export class Globe {
     if (rv && rv.t >= 1) this.drawPin(rv.target, GREEN, true, rv.label);
   }
   drawPlane(rv) {
-    const a = this.proj(rv.at), b = this.proj(rv.ip(Math.min(1, rv.t + .02))), ctx = this.ctx;
+    const a = this.proj(rv.at), b = this.proj(rv.ip(Math.min(1, rv.e + .02))), ctx = this.ctx;
     if (!a || !b) return;
     ctx.save(); ctx.translate(a[0], a[1]); ctx.rotate(Math.atan2(b[1] - a[1], b[0] - a[0]));
     ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(3, 3); ctx.lineTo(-4, 13); ctx.lineTo(-8, 13); ctx.lineTo(-3, 3); ctx.lineTo(-11, 2.5); ctx.lineTo(-14, 7); ctx.lineTo(-16, 7); ctx.lineTo(-14.5, 0);
