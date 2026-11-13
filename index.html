@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#f6eeda">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Passport Club">
+<title>Passport Club Daily</title>
+<meta name="description" content="Five stops around the world, every day. Find them on the globe, learn something at each one, and fill your passport with stamps.">
+<meta property="og:title" content="Passport Club Daily">
+<meta property="og:description" content="Five stops around the world, every day. Fill your passport with stamps.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/app.css">
+<script src="vendor/d3-array.min.js"></script>
+<script src="vendor/d3-geo.min.js"></script>
+<script src="vendor/topojson-client.min.js"></script>
+<script src="config.js"></script>
+</head>
+<body data-screen="home">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="seal" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="47" fill="none" stroke="currentColor" stroke-width="3"/>
+    <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" stroke-width="1.2"/>
+    <circle cx="50" cy="50" r="21" fill="currentColor"/>
+    <path d="M31 50h38M50 30c-11 11-11 29 0 40M50 30c11 11 11 29 0 40M34 41h32M34 59h32" stroke="#f6eeda" stroke-width="1.5" fill="none"/>
+    <path id="sealTop" d="M50 50m-31 0a31 31 0 1 1 62 0" fill="none"/>
+    <path id="sealBot" d="M50 50m-34 0a34 34 0 0 0 68 0" fill="none"/>
+    <text font-size="9" font-weight="700" letter-spacing="2.2" fill="currentColor" font-family="Georgia,serif"><textPath href="#sealTop" startOffset="50%" text-anchor="middle">PASSPORT CLUB</textPath></text>
+    <text font-size="6.4" font-weight="700" letter-spacing="1.6" fill="currentColor" font-family="Georgia,serif"><textPath href="#sealBot" startOffset="50%" text-anchor="middle">EXPLORE THE WORLD</textPath></text>
+  </symbol>
+</svg>
+
+<div id="app">
+
+  <!-- ============ HOME ============ -->
+  <section class="screen" id="home">
+    <div class="home-top">
+      <svg class="seal big"><use href="#seal"/></svg>
+      <h1>Passport Club Daily</h1>
+      <p class="dateline" id="homeDate"></p>
+    </div>
+    <div class="home-globe"><canvas id="homeGlobe"></canvas></div>
+    <div class="modepick" role="group" aria-label="Difficulty">
+      <button data-mode="explorer"><b>Explorer</b><span>A hint each stop. 500 points.</span></button>
+      <button data-mode="navigator"><b>Navigator</b><span>No hints. Hard stops count triple.</span></button>
+    </div>
+    <button class="btn primary" id="playBtn">Start today's trip</button>
+    <div class="statrow">
+      <div><b id="stStreak">0</b><span>day streak</span></div>
+      <div><b id="stCountries">0</b><span>countries stamped</span></div>
+      <div><b id="stBest">–</b><span>best trip</span></div>
+    </div>
+    <nav class="homenav">
+      <button data-go="passport">My passport</button>
+      <button data-go="groups">Family &amp; class</button>
+      <button id="howBtn">How to play</button>
+    </nav>
+  </section>
+
+  <!-- ============ GAME ============ -->
+  <section class="screen" id="game">
+    <header class="bar">
+      <button class="icon" data-go="home" aria-label="Back to the start">‹</button>
+      <div class="bar-mid"><span id="gMode"></span><span id="gTrip"></span></div>
+      <div class="bar-score"><b id="gTotal">0</b><span id="gMax">/ 500</span></div>
+    </header>
+    <div class="prompt">
+      <div class="prompt-main">
+        <div class="kind" id="gKind"></div>
+        <div class="q" id="gQ"></div>
+        <div class="hint" id="gHint"></div>
+      </div>
+      <div class="stop">Stop<b id="gStop">1/5</b></div>
+    </div>
+    <div class="mapwrap">
+      <canvas id="globe"></canvas>
+      <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button></div>
+      <div class="tip" id="gTip">Spin the globe, then tap where you think it is</div>
+      <div class="lockbar" id="lockbar" hidden>
+        <span>Tap again to move your pin</span>
+        <button class="btn primary" id="lockBtn">Lock in my guess</button>
+      </div>
+    </div>
+    <div class="sheet" id="sheet" hidden></div>
+    <div class="strip">
+      <div class="stamps" id="gStamps"></div>
+      <div class="strip-note" id="gNote"></div>
+    </div>
+  </section>
+
+  <!-- ============ END ============ -->
+  <section class="screen scroll" id="end">
+    <header class="bar">
+      <button class="icon" data-go="home" aria-label="Back to the start">‹</button>
+      <div class="bar-mid"><span>Today's passport page</span></div>
+      <div></div>
+    </header>
+    <img id="cardImg" class="cardimg" alt="Your score card for today">
+    <div class="row2">
+      <button class="btn primary" id="shareBtn">Share my page</button>
+      <button class="btn" id="copyBtn">Copy as text</button>
+    </div>
+    <p class="nexttrip" id="nextTrip"></p>
+    <div id="endBoards"></div>
+    <div class="row2">
+      <button class="btn" id="reviewBtn">Review my stops</button>
+      <button class="btn" data-go="passport">My passport</button>
+    </div>
+  </section>
+
+  <!-- ============ PASSPORT ============ -->
+  <section class="screen scroll" id="passport">
+    <header class="bar">
+      <button class="icon" data-go="home" aria-label="Back to the start">‹</button>
+      <div class="bar-mid"><span>My passport</span></div>
+      <div></div>
+    </header>
+    <div class="pp-cover">
+      <svg class="seal"><use href="#seal"/></svg>
+      <div><b id="ppName">Explorer</b><span id="ppLine"></span></div>
+    </div>
+    <div id="ppBody"></div>
+  </section>
+
+  <!-- ============ GROUPS ============ -->
+  <section class="screen scroll" id="groups">
+    <header class="bar">
+      <button class="icon" data-go="home" aria-label="Back to the start">‹</button>
+      <div class="bar-mid"><span>Family &amp; class</span></div>
+      <div></div>
+    </header>
+    <div class="card">
+      <label for="nameIn">Your first name</label>
+      <input id="nameIn" maxlength="16" autocomplete="given-name" placeholder="First name only">
+      <label for="codeIn">Join or start a group</label>
+      <div class="inrow"><input id="codeIn" maxlength="12" autocapitalize="characters" autocomplete="off" placeholder="Group code, like MANNING"><button class="btn primary" id="joinBtn">Join</button></div>
+      <p class="fine">A group is just a code. Everyone who types the same code sees each other's score for the day. No email, no password.</p>
+      <p class="fine warn" id="grpOffline" hidden>Group scores turn on once the game is hosted. For now you will only see your own.</p>
+    </div>
+    <div id="grpList"></div>
+  </section>
+
+</div>
+
+<dialog id="how">
+  <h2>How to play</h2>
+  <ol>
+    <li><b>Five stops a day, one try.</b> Everyone gets the same five, and a new trip arrives at midnight.</li>
+    <li><b>Spin and zoom the globe,</b> tap where you think the place is, then lock in your guess.</li>
+    <li><b>The closer you are, the more points.</b> Land in the right country and you get all 100.</li>
+    <li><b>Score 70 or better</b> and that country stamps your passport for good.</li>
+    <li><b>Learn something at every stop,</b> then share your page with your family or class.</li>
+  </ol>
+  <p class="fine"><b>Explorer</b> gives a hint at each stop and scores gently. <b>Navigator</b> gives no hints, and the last three stops are worth double and triple.</p>
+  <button class="btn primary" id="howClose">Got it</button>
+</dialog>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
