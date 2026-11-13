@@ -1,16 +1,36 @@
-// The globe: an old-paper political globe on a brass stand. Drag to spin, pinch or +/- to zoom, tap to place a pin.
+// The globe: a relief globe on a brass stand, tinted like an old map. Real terrain and real oceans,
+// country borders inked on top. Drag to spin, pinch or +/- to zoom, tap to place a pin.
 /* global d3, topojson */
-const INK = "#5a4a35", RED = "#b23a2e", GREEN = "#2f6b4f";
-const PAL = ["#e6d3a3", "#dcc0a0", "#cdd3a8", "#e3c7b8", "#d9cfa0", "#c3d0b8", "#d8c6c9"];
-const GRAT = d3.geoGraticule10();
-let WORLD = null;
+const RED = "#b23a2e", GREEN = "#2f6b4f", NAVY = "#1f2f4a";
+const GRAT = d3.geoGraticule10(), RAD = Math.PI / 180, TAU = Math.PI * 2;
+export const FLY_ZOOM = 2.2;   // the one scale every answer is shown at, so near looks near and far looks far
+let WORLD = null, TEX = null;
 
+function img(src) { return new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; }); }
+// NASA imagery, restyled: land keeps its real relief and color but is washed toward parchment; water becomes a soft antique teal.
+async function loadTexture() {
+  const [color, water] = await Promise.all([img("vendor/earth_color.jpg"), img("vendor/earth_water.jpg")]);
+  const w = color.width, h = color.height, cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  const x = cv.getContext("2d", { willReadFrequently: true });
+  x.drawImage(water, 0, 0, w, h); const wm = x.getImageData(0, 0, w, h).data;
+  x.drawImage(color, 0, 0, w, h); const d = x.getImageData(0, 0, w, h).data;
+  const out = new Uint32Array(w * h);
+  for (let i = 0, k = 0; i < d.length; i += 4, k++) {
+    const r = d[i], g = d[i + 1], b = d[i + 2], lum = (.3 * r + .59 * g + .11 * b) / 255, m = wm[i] / 255;
+    const lr = Math.min(255, (r * .52 + lum * 38 + 232 * .34) * 1.12), lg = Math.min(255, (g * .52 + lum * 38 + 214 * .34) * 1.12), lb = Math.min(255, (b * .46 + lum * 38 + 170 * .34) * 1.08);
+    const t = Math.max(0, Math.min(1, (lum - .06) / .22)), or = 150 + 44 * t, og = 184 + 30 * t, ob = 184 + 20 * t;
+    const R = lr * (1 - m) + or * m, G = lg * (1 - m) + og * m, B = lb * (1 - m) + ob * m;
+    out[k] = (255 << 24 | B << 16 | G << 8 | R) >>> 0;
+  }
+  return { w, h, px: out };
+}
 export async function loadWorld() {
   if (WORLD) return WORLD;
   const w = await fetch("vendor/countries-110m.json").then(r => r.json());
   const countries = topojson.feature(w, w.objects.countries).features;
-  const byId = new Map(countries.map(f => [f.id, f]));
-  WORLD = { countries, byId };
+  const borders = topojson.mesh(w, w.objects.countries);
+  WORLD = { countries, borders, byId: new Map(countries.map(f => [f.id, f])) };
+  try { TEX = await loadTexture(); } catch { TEX = null; }
   return WORLD;
 }
 
@@ -18,57 +38,75 @@ export class Globe {
   constructor(canvas, { interactive = true, onTap = null, stand = true, spin = false } = {}) {
     this.cv = canvas; this.ctx = canvas.getContext("2d");
     this.interactive = interactive; this.onTap = onTap; this.stand = stand; this.spin = spin;
-    this.rot = [80, -12, 0]; this.zoom = 1; this.target = null;
-    this.pin = null; this.rev = null; this.W = 0; this.H = 0; this.raf = 0; this.dirty = true;
+    this.rot = [80, -12, 0]; this.zoom = 1; this.zt = 0; this.target = null; this.liftOn = false;
+    this.pin = null; this.rev = null; this.W = 0; this.H = 0; this.raf = 0; this.pulse = 0;
     this.proj = d3.geoOrthographic().clipAngle(90);
     this.path = d3.geoPath(this.proj, this.ctx);
+    this.buf = document.createElement("canvas"); this.bctx = this.buf.getContext("2d");
     this.ptrs = new Map(); this.gesture = null;
     new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
     if (interactive) this.bind();
     this.resize();
   }
   resize() {
-    const p = this.cv.parentElement, d = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
+    const p = this.cv.parentElement; this.dpr = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
     this.W = p.clientWidth; this.H = p.clientHeight;
     if (!this.W || !this.H) return;
-    this.cv.width = this.W * d; this.cv.height = this.H * d;
-    this.ctx.setTransform(d, 0, 0, d, 0, 0);
+    this.cv.width = this.W * this.dpr; this.cv.height = this.H * this.dpr;
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.kick();
   }
   get baseR() { return Math.max(40, Math.min(this.W, this.H - (this.stand ? 64 : 0)) / 2 - (this.stand ? 22 : 6)); }
   get center() { return [this.W / 2, this.stand ? (this.H - 46) / 2 : this.H / 2]; }
-  kick() { this.dirty = true; if (!this.raf) this.raf = requestAnimationFrame(() => this.frame()); }
+  lift() { return this.liftOn ? Math.asin(Math.min(.9, .42 / this.zoom)) / RAD : 0; }
+  aim(p) { return [-p[0], Math.max(-85, Math.min(85, -p[1] + this.lift())), 0]; }
+  kick() { if (!this.raf) this.raf = requestAnimationFrame(() => this.frame()); }
   frame() {
-    this.raf = 0; let again = false;
-    if (this.target) {
+    this.raf = 0; let again = false; const rv = this.rev;
+    if (this.zt) { this.zoom += (this.zt - this.zoom) * .14; if (Math.abs(this.zt - this.zoom) < .01) { this.zoom = this.zt; this.zt = 0; } else again = true; }
+    if (rv && rv.t < 1) {             // the flight: the camera rides along from the guess to the answer
+      rv.t = Math.min(1, (performance.now() - rv.t0) / rv.dur);
+      rv.at = rv.ip(rv.t); this.rot = this.aim(rv.at); this.target = null; again = true;
+      if (rv.t >= 1) { rv.at = rv.target; if (rv.done) setTimeout(rv.done, 0); }
+    } else if (this.target) {
       const d0 = (((this.target[0] - this.rot[0]) + 540) % 360) - 180, d1 = this.target[1] - this.rot[1];
       this.rot = [this.rot[0] + d0 * .12, this.rot[1] + d1 * .12, 0];
       if (Math.abs(d0) < .15 && Math.abs(d1) < .15) this.target = null; else again = true;
     } else if (this.spin && !this.ptrs.size) { this.rot = [this.rot[0] + .15, this.rot[1], 0]; again = true; }
-    if (this.zt) { this.zoom += (this.zt - this.zoom) * .16; if (Math.abs(this.zt - this.zoom) < .01) { this.zoom = this.zt; this.zt = 0; } else again = true; }
-    if (this.rev && this.rev.t < 1) { this.rev.t = Math.min(1, this.rev.t + .04); again = true; }
-    if (this.pin && !this.rev) { this.pulse = (this.pulse || 0) + .06; again = true; }
-    if (this.W && this.H && WORLD) this.draw();
-    if (again) this.raf = requestAnimationFrame(() => this.frame());
+    if (this.pin && !rv) { this.pulse += .06; again = true; }
+    const moving = again || this.ptrs.size > 0;
+    if (this.W && this.H && WORLD) this.draw(moving);
+    if (again) this.kick();
+    else if (moving) { clearTimeout(this.sharp); this.sharp = setTimeout(() => this.kick(), 120); }   // one crisp pass once things settle
   }
   // ---- public
   setPin(p) { this.pin = p; this.kick(); }
   clear() { this.pin = null; this.rev = null; this.kick(); }
-  reveal(guess, target, label, ccn, dist, x = {}) { this.pin = guess; this.rev = { guess, target, label, ccn, dist, ...x, t: 0 }; this.kick(); }
-  showAnswer(guess, target, label, ccn, dist, x = {}) { this.pin = guess; this.rev = { guess, target, label, ccn, dist, ...x, t: 1 }; this.kick(); }
-  zoomTo(z) { this.zt = Math.max(1, Math.min(8, z)); this.kick(); }
-  flyTo(p, up = 0) { this.target = [-p[0], Math.max(-85, Math.min(85, -p[1] + up))]; this.kick(); }
-  setZoom(z) { this.zt = 0; this.zoom = Math.max(1, Math.min(8, z)); this.kick(); }
+  reveal(guess, target, label, ccn, done) {
+    const sep = d3.geoDistance(guess, target) / RAD;
+    this.pin = guess; this.target = null; this.zt = FLY_ZOOM;
+    this.rev = { guess, target, label, ccn, done, ip: d3.geoInterpolate(guess, target), at: guess, t: 0, t0: performance.now(), dur: Math.max(700, Math.min(6500, sep * 55)) };
+    this.kick();
+  }
+  showAnswer(guess, target, label, ccn) {
+    this.pin = guess; this.zt = 0; this.zoom = FLY_ZOOM; this.target = null;
+    this.rev = { guess, target, label, ccn, ip: d3.geoInterpolate(guess, target), at: target, t: 1 };
+    this.rot = this.aim(target); this.kick();
+  }
+  flyTo(p) { this.target = this.aim(p); this.kick(); }
+  setZoom(z) { this.zt = 0; this.zoom = Math.max(1, Math.min(7, z)); this.kick(); }
+  zoomTo(z) { this.zt = Math.max(1, Math.min(7, z)); this.kick(); }
   zoomBy(k) { this.setZoom(this.zoom * k); }
   // ---- input
   bind() {
     const cv = this.cv;
     cv.addEventListener("pointerdown", e => {
+      if (this.rev && this.rev.t < 1) return;
       cv.setPointerCapture(e.pointerId);
       this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this.ptrs.size === 1) this.gesture = { x: e.clientX, y: e.clientY, rot: [...this.rot], moved: false, t: performance.now(), multi: false };
-      else if (this.ptrs.size === 2) { this.gesture.multi = true; this.gesture.d0 = this.spread(); this.gesture.z0 = this.zoom; }
-      this.target = null;
+      else if (this.ptrs.size === 2 && this.gesture) { this.gesture.multi = true; this.gesture.d0 = this.spread(); this.gesture.z0 = this.zoom; }
+      this.target = null; this.zt = 0;
     });
     cv.addEventListener("pointermove", e => {
       if (!this.ptrs.has(e.pointerId)) return;
@@ -102,77 +140,76 @@ export class Globe {
   }
   // ---- drawing
   visible(p) { return d3.geoDistance(p, [-this.rot[0], -this.rot[1]]) < Math.PI / 2 - .02; }
-  draw() {
-    const { ctx, W, H, proj, path } = this, c = this.center, R = this.baseR, r = R * this.zoom;
+  // paint the terrain: for every pixel of the disc, work out which spot on Earth it shows and copy that spot's color
+  raster(c, r, q) {
+    const bw = Math.max(2, Math.round(this.W * q)), bh = Math.max(2, Math.round(this.H * q));
+    if (this.buf.width !== bw || this.buf.height !== bh) { this.buf.width = bw; this.buf.height = bh; this.im = this.bctx.createImageData(bw, bh); this.im32 = new Uint32Array(this.im.data.buffer); }
+    const out = this.im32, tx = TEX.px, tw = TEX.w, th = TEX.h, cx = c[0] * q, cy = c[1] * q, rad = r * q;
+    const l0 = -this.rot[0] * RAD, p0 = -this.rot[1] * RAD, sp = Math.sin(p0), cp = Math.cos(p0);
+    out.fill(0);
+    const j0 = Math.max(0, Math.ceil(cy - rad)), j1 = Math.min(bh - 1, Math.floor(cy + rad));
+    for (let j = j0; j <= j1; j++) {
+      const y = (cy - j) / rad, xs = Math.sqrt(Math.max(0, 1 - y * y)) * rad;
+      const i0 = Math.max(0, Math.ceil(cx - xs)), i1 = Math.min(bw - 1, Math.floor(cx + xs));
+      let k = j * bw + i0;
+      for (let i = i0; i <= i1; i++, k++) {
+        const x = (i - cx) / rad, z = Math.sqrt(Math.max(0, 1 - x * x - y * y));
+        const lat = Math.asin(Math.max(-1, Math.min(1, z * sp + y * cp))), lon = l0 + Math.atan2(x, z * cp - y * sp);
+        let u = lon / TAU + .5; u -= Math.floor(u);
+        const v = Math.min(th - 1, (.5 - lat / Math.PI) * th | 0);
+        out[k] = tx[v * tw + (u * tw | 0)];
+      }
+    }
+    this.bctx.putImageData(this.im, 0, 0);
+    this.ctx.imageSmoothingEnabled = true;
+    this.ctx.drawImage(this.buf, 0, 0, this.W, this.H);
+  }
+  draw(moving) {
+    const { ctx, W, H, proj, path } = this, c = this.center, R = this.baseR, r = R * this.zoom, rv = this.rev;
     proj.scale(r).translate(c).rotate(this.rot);
     ctx.clearRect(0, 0, W, H);
     if (this.stand && this.zoom < 1.12) this.drawStand(c, R);
-    ctx.beginPath(); path({ type: "Sphere" });
-    let g = ctx.createRadialGradient(c[0] - r * .35, c[1] - r * .4, r * .1, c[0], c[1], r);
-    g.addColorStop(0, "#e4ead9"); g.addColorStop(1, "#a9c2bd"); ctx.fillStyle = g; ctx.fill();
-    ctx.beginPath(); path(GRAT); ctx.strokeStyle = "#5a4a3526"; ctx.lineWidth = .6; ctx.stroke();
-    ctx.lineJoin = "round";
-    for (const f of WORLD.countries) {
-      ctx.beginPath(); path(f);
-      ctx.fillStyle = PAL[(+f.id || 0) % PAL.length]; ctx.fill();
-      ctx.strokeStyle = INK; ctx.lineWidth = .5; ctx.stroke();
+    if (TEX) this.raster(c, r, moving ? 1 : Math.min(2, this.dpr));
+    else {
+      ctx.beginPath(); path({ type: "Sphere" }); ctx.fillStyle = "#a9c2bd"; ctx.fill();
+      ctx.beginPath(); for (const f of WORLD.countries) path(f); ctx.fillStyle = "#e0cfa8"; ctx.fill();
     }
-    const rv = this.rev;
-    if (rv && rv.ccn && rv.t >= 1) { const f = WORLD.byId.get(rv.ccn); if (f) { ctx.beginPath(); path(f); ctx.fillStyle = "#b23a2e59"; ctx.fill(); ctx.strokeStyle = RED; ctx.lineWidth = 1.6; ctx.stroke(); } }
+    ctx.beginPath(); path(GRAT); ctx.strokeStyle = "#3d312218"; ctx.lineWidth = .6; ctx.stroke();
+    ctx.lineJoin = "round";
+    ctx.beginPath(); path(WORLD.borders); ctx.strokeStyle = "#3d3122a6"; ctx.lineWidth = this.zoom > 2 ? .9 : .7; ctx.stroke();
+    if (rv && rv.ccn && rv.t >= 1) { const f = WORLD.byId.get(rv.ccn); if (f) { ctx.beginPath(); path(f); ctx.fillStyle = "#b23a2e2e"; ctx.fill(); ctx.strokeStyle = RED; ctx.lineWidth = 1.8; ctx.stroke(); } }
     ctx.beginPath(); path({ type: "Sphere" });
-    g = ctx.createRadialGradient(c[0] - r * .4, c[1] - r * .45, r * .2, c[0], c[1], r * 1.02);
-    g.addColorStop(0, "rgba(255,255,255,.26)"); g.addColorStop(.6, "rgba(255,255,255,0)"); g.addColorStop(1, "rgba(50,40,20,.30)");
-    ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = "#5a4a3588"; ctx.lineWidth = 1; ctx.stroke();
-    if (rv && rv.t >= 1 && rv.rings) this.drawRings(rv);
+    const g = ctx.createRadialGradient(c[0] - r * .4, c[1] - r * .45, r * .2, c[0], c[1], r * 1.02);
+    g.addColorStop(0, "rgba(255,250,235,.20)"); g.addColorStop(.6, "rgba(255,255,255,0)"); g.addColorStop(1, "rgba(40,30,15,.42)");
+    ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = "#3d312299"; ctx.lineWidth = 1.2; ctx.stroke();
     if (rv) {
-      const ip = d3.geoInterpolate(rv.guess, rv.target), pts = [];
-      for (let i = 0; i <= 48; i++) pts.push(ip(i / 48 * rv.t));
+      const pts = []; for (let i = 0; i <= 64; i++) pts.push(rv.ip(i / 64 * rv.t));
       ctx.beginPath(); path({ type: "LineString", coordinates: pts });
-      ctx.strokeStyle = RED; ctx.lineWidth = 2.2; ctx.setLineDash([7, 6]); ctx.lineCap = "round"; ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = RED; ctx.lineWidth = 2.4; ctx.setLineDash([7, 6]); ctx.lineCap = "round"; ctx.stroke(); ctx.setLineDash([]);
     }
     if (this.pin) this.drawPin(this.pin, RED, false);
+    if (rv && rv.t < 1) this.drawPlane(rv);
     if (rv && rv.t >= 1) this.drawPin(rv.target, GREEN, true, rv.label);
-    if (rv && rv.t >= 1 && rv.dist) this.drawDist(rv);
-    if (rv && rv.t >= 1 && rv.you && this.visible(rv.guess)) { const [x, y] = this.proj(rv.guess); this.pill(rv.you, x, y + 24, RED, '600 12.5px "Avenir Next",system-ui,sans-serif'); }
+  }
+  drawPlane(rv) {
+    const a = this.proj(rv.at), b = this.proj(rv.ip(Math.min(1, rv.t + .02))), ctx = this.ctx;
+    if (!a || !b) return;
+    ctx.save(); ctx.translate(a[0], a[1]); ctx.rotate(Math.atan2(b[1] - a[1], b[0] - a[0]));
+    ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(3, 3); ctx.lineTo(-4, 13); ctx.lineTo(-8, 13); ctx.lineTo(-3, 3); ctx.lineTo(-11, 2.5); ctx.lineTo(-14, 7); ctx.lineTo(-16, 7); ctx.lineTo(-14.5, 0);
+    ctx.lineTo(-16, -7); ctx.lineTo(-14, -7); ctx.lineTo(-11, -2.5); ctx.lineTo(-3, -3); ctx.lineTo(-8, -13); ctx.lineTo(-4, -13); ctx.lineTo(3, -3); ctx.closePath();
+    ctx.fillStyle = NAVY; ctx.strokeStyle = "#f6eeda"; ctx.lineWidth = 1.6; ctx.lineJoin = "round"; ctx.stroke(); ctx.fill(); ctx.restore();
   }
   drawPin(p, color, isTarget, label) {
     if (!this.visible(p)) return;
     const { ctx, W } = this, [x, y] = this.proj(p);
-    if (!isTarget && !this.rev) { const a = 10 + 5 * Math.sin(this.pulse || 0); ctx.beginPath(); ctx.arc(x, y, a + 4, 0, 7); ctx.fillStyle = "#b23a2e30"; ctx.fill(); }
+    if (!isTarget && !this.rev) { const a = 10 + 5 * Math.sin(this.pulse); ctx.beginPath(); ctx.arc(x, y, a + 4, 0, 7); ctx.fillStyle = "#b23a2e38"; ctx.fill(); }
     ctx.beginPath(); ctx.arc(x, y, isTarget ? 9 : 7, 0, 7); ctx.fillStyle = isTarget ? "#fff" : color; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = isTarget ? color : "#f6eeda"; ctx.stroke();
     if (!isTarget) return;
     ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 7); ctx.fillStyle = color; ctx.fill();
     ctx.font = '600 14px "Iowan Old Style","Palatino Linotype",Georgia,serif';
     const w = ctx.measureText(label).width + 16, lx = Math.min(Math.max(x - w / 2, 6), W - w - 6), ly = y - 38 < 6 ? y + 16 : y - 38;
     ctx.fillStyle = "#f6eeda"; ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(lx, ly, w, 24, 3); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = "#1f2f4a"; ctx.textBaseline = "middle"; ctx.fillText(label, lx + 8, ly + 12.5);
-  }
-  // the miles, written on the line itself, so a short-looking line on a whole-globe view can't mislead
-  drawDist(rv) {
-    const mid = d3.geoInterpolate(rv.guess, rv.target)(.5); if (!this.visible(mid)) return;
-    const { ctx, W } = this, [x, y] = this.proj(mid), [ax, ay] = this.proj(rv.guess), [bx, by] = this.proj(rv.target);
-    if (Math.hypot(ax - bx, ay - by) < 70) return;
-    ctx.font = '700 12px "Courier New",Courier,monospace';
-    const w = ctx.measureText(rv.dist).width + 12, lx = Math.min(Math.max(x - w / 2, 6), W - w - 6);
-    ctx.fillStyle = "#f6eeda"; ctx.strokeStyle = RED; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.roundRect(lx, y - 10, w, 20, 10); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = RED; ctx.textBaseline = "middle"; ctx.fillText(rv.dist, lx + 6, y + .5);
-  }
-  // a bullseye around the answer: each ring is where the points drop to 75, 50 and 25, so distance reads as score
-  drawRings(rv) {
-    const { ctx, path } = this, cols = [GREEN, "#b06a12", RED];
-    rv.rings.forEach((r, i) => {
-      const circle = d3.geoCircle().center(rv.target).radius(r.km / 111.19).precision(3)();
-      ctx.beginPath(); path(circle); ctx.strokeStyle = cols[i]; ctx.globalAlpha = .75; ctx.lineWidth = 1.6; ctx.setLineDash([3, 5]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
-      let best = null;
-      for (const p of circle.coordinates[0]) { if (!this.visible(p)) continue; const q = this.proj(p); if (q[0] < 40 || q[0] > this.W - 40 || q[1] < 14) continue; if (!best || q[1] < best[1]) best = q; }
-      if (best) this.pill(r.label, best[0], best[1], cols[i], '700 11px "Courier New",Courier,monospace');
-    });
-  }
-  pill(text, x, y, color, font) {
-    const { ctx, W } = this; ctx.font = font;
-    const w = ctx.measureText(text).width + 12, lx = Math.min(Math.max(x - w / 2, 6), W - w - 6);
-    ctx.fillStyle = "#f6eeda"; ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.roundRect(lx, y - 10, w, 20, 10); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.fillText(text, lx + 6, y + .5);
+    ctx.fillStyle = NAVY; ctx.textBaseline = "middle"; ctx.fillText(label, lx + 8, ly + 12.5);
   }
   drawStand(c, r) {
     const ctx = this.ctx, by = c[1] + r + 30;

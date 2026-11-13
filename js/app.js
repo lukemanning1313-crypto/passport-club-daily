@@ -1,4 +1,4 @@
-import { Globe, loadWorld } from "./globe.js";
+import { Globe, loadWorld, FLY_ZOOM } from "./globe.js";
 import * as C from "./core.js";
 /* global d3 */
 
@@ -54,7 +54,7 @@ function renderStop() {
   $("#sheet").hidden = true; $("#sheet").classList.remove("open");
   $("#lockbar").hidden = true; $("#gTip").hidden = G.review;
   G.revealed = false; G.pending = null;
-  globe.clear(); globe.setZoom(1);
+  globe.liftOn = false; globe.clear(); globe.setZoom(1);
   renderStrip();
   if (G.review) revealStop(false);
 }
@@ -75,7 +75,7 @@ function onTap(p) {
   if (!G || G.revealed || G.review) return;
   G.pending = p; globe.setPin(p);
   // glide in on the pin so you can see exactly where it landed before you lock it
-  globe.flyTo(p, 0); if (globe.zoom < 2.2) globe.zoomTo(2.2);
+  globe.flyTo(p); if (globe.zoom < FLY_ZOOM) globe.zoomTo(FLY_ZOOM);
   $("#lockbar").hidden = false; $("#gTip").hidden = true;
 }
 function lock() {
@@ -89,16 +89,13 @@ function lock() {
 function revealStop(animate) {
   const p = G.trip[G.idx], r = G.results[G.idx], tgt = [p.lon, p.lat];
   G.revealed = true; $("#lockbar").hidden = true; $("#gTip").hidden = true;
-  // zoom so the guess and the answer are easy to tell apart, without losing either off the edge
-  // frame the guess and the answer together: the line always crosses a good part of the screen, and carries its miles
-  const sep = Math.max(.01, d3.geoDistance(r.g, tgt)), mid = d3.geoInterpolate(r.g, tgt)(.5);
-  const z = sep > 2.2 ? 1 : Math.max(1, Math.min(r.inside ? 3.5 : 5, .4 / Math.sin(sep / 2)));
-  const dist = r.inside ? "" : Math.round(r.km * .621).toLocaleString() + " mi";
   if (r.where === undefined) r.where = C.whereIs(r.g, world);
-  const x = r.inside ? {} : { rings: C.rings(p, G.mode, world), you: r.where ? "You: " + r.where : "You: open water" };
-  (animate ? globe.reveal : globe.showAnswer).call(globe, r.g, tgt, p.name, p.ccn, dist, x);
-  globe.zoomTo(z); globe.flyTo(mid, Math.asin(Math.min(.9, .45 / z)) * 57.3);
-  renderStrip(); renderSheet();
+  globe.liftOn = true;
+  // The answer is shown as a flight from the pin to the real spot, always at the same scale.
+  // A near miss is a short hop that stays on screen; a far one is a long trip that leaves the pin behind.
+  if (animate) globe.reveal(r.g, tgt, p.name, p.ccn, () => { renderStrip(); renderSheet(); });
+  else { globe.showAnswer(r.g, tgt, p.name, p.ccn); renderSheet(); }
+  renderStrip();
 }
 function renderSheet() {
   const p = G.trip[G.idx], r = G.results[G.idx], w = C.weight(G.idx, G.mode), box = $("#sheet"), open = box.classList.contains("open");
@@ -107,7 +104,7 @@ function renderSheet() {
     <div class="place"><div class="flag">${p.flag}</div>
       <div><b>${esc(p.name)}</b><span>${esc(p.sub)} · ${C.milesText(r)}</span></div>
       <div class="score ${r.score < 50 ? "low" : ""}">${r.score}<small>${w > 1 ? `×${w} = ${r.score * w}` : "OF 100"}</small></div></div>
-    ${r.inside ? "" : `<p class="landed">Your pin landed ${r.where ? "in " + esc(r.where) : "in open water"}. ${C.compare(r.km)}</p>`}
+    ${r.inside ? "" : `<p class="landed">Your pin landed ${r.where ? "in " + esc(r.where) : "in open water"}.</p>`}
     <p class="wow">${esc(p.wow)}</p>
     <div class="morebox">
       <ul class="facts">${p.fast.map(f => `<li><span>${esc(f[0])}</span><div>${esc(f[1])}</div></li>`).join("")}</ul>

@@ -43,22 +43,9 @@ export function scoreGuess(place, guess, mode, world) {
   const score = inside || km <= grace ? 100 : Math.max(0, Math.round(100 * Math.exp(-(km - grace) / fall)));
   return { km: Math.round(km), score, inside: inside || km <= grace, where: whereIs(guess, world) };
 }
-// the distance at which a guess is worth 75, 50 and 25 points: drawn as rings around the answer
-export function rings(place, mode, world) {
-  const { fall, grace } = params(place, mode, world);
-  return [75, 50, 25].map(s => ({ km: grace + fall * Math.log(100 / s), label: s + " pts" }));
-}
 export function whereIs(p, world) {
   const f = world.countries.find(c => d3.geoContains(c, p));
   return f ? f.properties.name : "";
-}
-const REFS = [[205, "New York to Washington, D.C."], [355, "Minneapolis to Chicago"], [715, "New York to Chicago"], [1090, "New York to Miami"], [1525, "Minneapolis to Los Angeles"], [2450, "New York to Los Angeles"], [3460, "New York to London"], [4960, "New York to Honolulu"], [6740, "New York to Tokyo"]];
-export function compare(km) {
-  const mi = km * .621; if (mi < 170) return "";
-  const near = REFS.reduce((a, b) => Math.abs(Math.log(b[0] / mi)) < Math.abs(Math.log(a[0] / mi)) ? b : a);
-  if (Math.abs(near[0] / mi - 1) <= .15) return `That is about as far as ${near[1]}.`;
-  const under = REFS.filter(r => r[0] < mi).pop();
-  return under ? `That is farther than ${under[1]}.` : "";
 }
 export const weight = (i, mode) => mode === "navigator" ? WEIGHTS[i] : 1;
 export const maxTotal = mode => WEIGHTS.reduce((a, _, i) => a + 100 * weight(i, mode), 0);
