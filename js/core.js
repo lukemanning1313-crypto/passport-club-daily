@@ -1,9 +1,12 @@
 // Daily trip selection, scoring, saved progress, and the group-score backend adapter.
 /* global d3 */
 import { PLACES } from "./data.js";
+import { PHOTOS } from "./photos.js";
 
 export const LAUNCH = new Date(2026, 10, 13); // Trip #1, local time
-export const WEIGHTS = [1, 1, 2, 3, 3];       // Navigator: harder stops are worth more (max 1,000)
+// Navigator: harder stops are worth more, and the total is always 1,000. Six stops since the picture stop arrived.
+const W5 = [1, 1, 2, 3, 3], W6 = [1, 1, 2, 2, 3, 1];
+const weightsFor = n => n >= 6 ? W6 : W5;
 export const STAMP_AT = 70;
 const KEY = "pcd.v1";
 
@@ -18,17 +21,30 @@ export const fmtShort = d => d.toLocaleDateString("en-US", { month: "short", day
 function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function shuffled(arr, seed) { const a = [...arr], r = rng(seed); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 const TIERS = [1, 2, 3].map(t => PLACES.filter(p => p.tier === t).sort((a, b) => a.id < b.id ? -1 : 1));
+// The picture stop: a photo with no name. Starts with Trip #2; Trip #1 was played as five stops and stays that way.
+export const PIC_FROM = 1;
+const PICS = PLACES.filter(p => PHOTOS[p.id] && PHOTOS[p.id].lon !== undefined).sort((a, b) => a.id < b.id ? -1 : 1);
+function picItem(place) {
+  const ph = PHOTOS[place.id];
+  return { ...place, id: "pic-" + place.id, photo: place.id, kind: "picture", q: "Where in the world is this?", name: ph.article, sub: place.country, lon: ph.lon, lat: ph.lat, hint: "It is in " + place.continent + "." };
+}
+function pictureFor(seedDay, avoid) {
+  const order = shuffled(PICS, 4441 + Math.floor(seedDay / PICS.length) * 13);
+  for (let k = 0; k < order.length; k++) { const c = order[(seedDay + k) % order.length]; if (!avoid.includes(c.id)) return picItem(c); }
+  return picItem(order[0]);
+}
 export function tripFor(day) {
   const d = Math.max(0, day), per = Math.floor(TIERS[1].length) || 1, cycle = Math.floor(d / per), k = d % per;
   const [e, m, h] = TIERS.map((t, i) => shuffled(t, 9173 + cycle * 31 + i * 7));
-  return [e[(2 * k) % e.length], e[(2 * k + 1) % e.length], m[k % m.length], h[(2 * k) % h.length], h[(2 * k + 1) % h.length]];
+  const five = [e[(2 * k) % e.length], e[(2 * k + 1) % e.length], m[k % m.length], h[(2 * k) % h.length], h[(2 * k + 1) % h.length]];
+  return d >= PIC_FROM ? [...five, pictureFor(d, five.map(p => p.id))] : five;
 }
 export function bonusTrip(avoid = []) {
   const s = Date.now() & 0xffff, [e, m, h] = TIERS.map((t, i) => shuffled(t.filter(p => !avoid.includes(p.id)), s + i));
-  return [e[0], e[1], m[0], h[0], h[1]];
+  const five = [e[0], e[1], m[0], h[0], h[1]];
+  return [...five, pictureFor(s, [...avoid, ...five.map(p => p.id)])];
 }
 
-// ---------- scoring ----------
 // Every target is a single spot. Only a pin within a few miles scores a perfect 100; after that the points fall away with distance.
 export function scoreGuess(place, guess, mode, world) {
   const km = d3.geoDistance(guess, [place.lon, place.lat]) * 6371, kid = mode === "explorer";
@@ -40,9 +56,9 @@ export function whereIs(p, world) {
   const f = world.countries.find(c => d3.geoContains(c, p));
   return f ? f.properties.name : "";
 }
-export const weight = (i, mode) => mode === "navigator" ? WEIGHTS[i] : 1;
-export const maxTotal = mode => WEIGHTS.reduce((a, _, i) => a + 100 * weight(i, mode), 0);
-export const totalOf = (results, mode) => results.reduce((a, r, i) => a + (r ? r.score * weight(i, mode) : 0), 0);
+export const weight = (i, mode, n) => mode === "navigator" ? weightsFor(n)[i] : 1;
+export const maxTotal = (mode, n) => weightsFor(n).reduce((a, _, i) => a + 100 * weight(i, mode, n), 0);
+export const totalOf = (results, mode, n) => results.reduce((a, r, i) => a + (r ? r.score * weight(i, mode, n) : 0), 0);
 export const milesText = r => r.inside ? "Right on it" : Math.round(r.km * .621).toLocaleString() + " miles away";
 
 // ---------- saved progress (this phone only) ----------

@@ -27,10 +27,10 @@ function renderHome() {
   $("#homeDate").textContent = `Trip #${d + 1} · ${C.fmtLong(new Date())}`;
   const mode = day?.mode || S.mode;
   document.querySelectorAll(".modepick button").forEach(b => { b.setAttribute("aria-pressed", b.dataset.mode === mode); b.disabled = started && b.dataset.mode !== mode; });
-  $("#playBtn").textContent = day?.done ? "See today's passport page" : started ? `Keep going · stop ${day.results.length + 1} of 5` : "Start today's trip";
+  $("#playBtn").textContent = day?.done ? "See today's passport page" : started ? `Keep going · stop ${day.results.length + 1} of ${C.tripFor(d).length}` : "Start today's trip";
   $("#stStreak").textContent = C.streak(S, d);
   $("#stCountries").textContent = Object.keys(S.stamps).length;
-  const best = Object.values(S.days).filter(x => x.done).map(x => Math.round(100 * C.totalOf(x.results, x.mode) / C.maxTotal(x.mode)));
+  const best = Object.values(S.days).filter(x => x.done).map(x => Math.round(100 * C.totalOf(x.results, x.mode, x.results.length) / C.maxTotal(x.mode, x.results.length)));
   $("#stBest").textContent = best.length ? Math.max(...best) + "%" : "–";
 }
 
@@ -45,31 +45,35 @@ function startTrip(practice = false) {
   go("game"); renderStop();
 }
 function renderStop() {
-  const p = G.trip[G.idx], w = C.weight(G.idx, G.mode);
+  const p = G.trip[G.idx], w = C.weight(G.idx, G.mode, G.trip.length), pic = p.kind === "picture", ph0 = PHOTOS[p.photo || p.id];
   $("#gMode").textContent = MODE_NAME[G.mode];
   $("#gTrip").textContent = G.review ? "Looking back" : G.practice ? "Bonus trip" : `Trip #${G.day + 1}`;
   $("#gKind").innerHTML = esc(KIND[p.kind]) + (w > 1 ? ` <span class="mult">×${w} points</span>` : "");
   $("#gQ").textContent = p.q;
   $("#gHint").textContent = G.mode === "explorer" ? "Hint: " + p.hint : "";
-  $("#gStop").textContent = `${G.idx + 1}/5`;
+  $("#gStop").textContent = `${G.idx + 1}/${G.trip.length}`;
+  // the picture stop shows only the photo; its credit names the photographer, never the place
+  $("#gPicWrap").hidden = !pic; $("#gPicWrap").classList.remove("big");
+  if (pic) { $("#gPic").src = "img/" + ph0.file; $("#gPicCredit").textContent = "Tap the picture to make it bigger. The photo credit comes with the answer, so it can't give the place away."; }
   $("#sheet").hidden = true; $("#sheet").classList.remove("open");
   $("#lockbar").hidden = true; $("#gTip").hidden = G.review;
   G.revealed = false; G.pending = null;
   globe.liftOn = false; globe.clear(); globe.setZoom(1);
-  if (PHOTOS[p.id]) new Image().src = "img/" + PHOTOS[p.id].file;   // warm the photo so it is ready at the answer
+  if (ph0) new Image().src = "img/" + ph0.file;   // warm the photo so it is ready at the answer
   renderStrip();
   if (G.review) revealStop(false);
 }
-const KIND = { country: "Find the country", capital: "Find the city", landmark: "Find the landmark", nature: "Find the place" };
+const KIND = { picture: "Picture stop", country: "Find the country", capital: "Find the city", landmark: "Find the landmark", nature: "Find the place" };
 function renderStrip() {
   $("#gStamps").innerHTML = G.trip.map((p, i) => {
     const r = G.results[i];
     if (!r) return `<div class="slot ${i === G.idx ? "now" : ""}">${i + 1}</div>`;
     const ok = r.score >= C.STAMP_AT;
-    return `<div class="stampd ${ok ? "" : "miss"}" style="--c:${INKS[i]};--rot:${ROTS[i]}deg" title="${esc(p.country)}">${p.flag}</div>`;
+    return `<div class="stampd ${ok ? "" : "miss"}" style="--c:${INKS[i % 5]};--rot:${ROTS[i % 5]}deg" title="${esc(p.country)}">${p.flag}</div>`;
   }).join("");
-  $("#gTotal").textContent = C.totalOf(G.results, G.mode);
-  $("#gMax").textContent = "/ " + C.maxTotal(G.mode);
+  $("#gStamps").style.gridTemplateColumns = `repeat(${G.trip.length}, ${G.trip.length > 5 ? 36 : 42}px)`;
+  $("#gTotal").textContent = C.totalOf(G.results, G.mode, G.trip.length);
+  $("#gMax").textContent = "/ " + C.maxTotal(G.mode, G.trip.length);
   const n = G.results.filter(r => r && r.score >= C.STAMP_AT).length;
   $("#gNote").innerHTML = `${n} stamp${n === 1 ? "" : "s"}<br>today`;
 }
@@ -100,8 +104,8 @@ function revealStop(animate) {
   renderStrip();
 }
 function renderSheet() {
-  const p = G.trip[G.idx], r = G.results[G.idx], w = C.weight(G.idx, G.mode), box = $("#sheet"), open = box.classList.contains("open");
-  const last = G.idx >= 4, ph = PHOTOS[p.id];
+  const p = G.trip[G.idx], r = G.results[G.idx], w = C.weight(G.idx, G.mode, G.trip.length), box = $("#sheet"), open = box.classList.contains("open");
+  const last = G.idx >= lastIdx(), ph = PHOTOS[p.photo || p.id];
   box.innerHTML = `
     <div class="place">${ph ? `<img class="thumb" src="img/${ph.file}" alt="">` : `<div class="flag">${p.flag}</div>`}
       <div><b>${ph ? p.flag + " " : ""}${esc(p.name)}</b><span>${esc(p.sub)} · ${C.milesText(r)}</span></div>
@@ -119,8 +123,9 @@ function renderSheet() {
   $("#moreBtn").onclick = () => { box.classList.toggle("open"); renderSheet(); };
   $("#nextBtn").onclick = nextStop;
 }
+const lastIdx = () => (G.review ? G.results.length : G.trip.length) - 1;
 function nextStop() {
-  if (G.idx >= 4) { finish(); return; }
+  if (G.idx >= lastIdx()) { finish(); return; }
   G.idx++; renderStop();
 }
 function finish() {
@@ -134,7 +139,7 @@ function finish() {
 
 // ================= END / SHARE =================
 function endData() {
-  if (G && G.practice && G.results.length === 5) return { practice: true, day: G.day, mode: G.mode, results: G.results, trip: G.trip };
+  if (G && G.practice && G.results.length === G.trip.length) return { practice: true, day: G.day, mode: G.mode, results: G.results, trip: G.trip };
   const d = today(), day = S.days[d];
   return day?.done ? { practice: false, day: d, mode: day.mode, results: day.results, trip: C.tripFor(d) } : null;
 }
@@ -152,9 +157,9 @@ function showEnd() {
 const mark = n => n === 100 ? "🎯" : n >= 90 ? "🔥" : n >= 70 ? "🛂" : n >= 50 ? "🧭" : n >= 30 ? "✈️" : n >= 10 ? "🌊" : "🛸";
 const siteUrl = () => (location.host + location.pathname).replace(/\/(index\.html)?$/, "");
 function shareText(E) {
-  const tot = C.totalOf(E.results, E.mode), n = E.results.filter(r => r.score >= C.STAMP_AT).length, st = C.streak(S);
-  const line = E.results.map(r => r.score + mark(r.score)).join(" ");
-  const tail = [`${tot}/${C.maxTotal(E.mode)}`, `🛂 ${n} stamp${n === 1 ? "" : "s"}`]; if (st > 1) tail.push(`🔥 ${st} days`);
+  const N = E.results.length, tot = C.totalOf(E.results, E.mode, N), n = E.results.filter(r => r.score >= C.STAMP_AT).length, st = C.streak(S);
+  const line = E.results.map((r, i) => (E.trip[i]?.kind === "picture" ? "📸" : "") + r.score + mark(r.score)).join(" ");
+  const tail = [`${tot}/${C.maxTotal(E.mode, N)}`, `🛂 ${n} stamp${n === 1 ? "" : "s"}`]; if (st > 1) tail.push(`🔥 ${st} days`);
   return `${siteUrl()} Trip #${E.day + 1} ${E.mode === "explorer" ? "🎒 Explorer" : "🧭 Navigator"}\n${line}\n${tail.join(" · ")}`;
 }
 async function share() {
@@ -187,22 +192,22 @@ function drawCard(E) {
   if (S.name) { x.font = `italic 40px ${serif}`; x.fillStyle = INK; x.fillText(`${S.name}'s passport page`, 80, 370); }
   // stamps
   E.results.forEach((r, i) => {
-    const cx = 172 + i * 184, cy = S.name ? 560 : 500, ok = r.score >= C.STAMP_AT, col = ok ? INKS[i] : "#9b8f7c";
-    x.save(); x.translate(cx, cy); x.rotate(ROTS[i] * Math.PI / 180);
+    const N = E.results.length, cx = N > 5 ? 150 + i * 156 : 172 + i * 184, cy = S.name ? 560 : 500, ok = r.score >= C.STAMP_AT, col = ok ? INKS[i % 5] : "#9b8f7c";
+    x.save(); x.translate(cx, cy); x.rotate(ROTS[i % 5] * Math.PI / 180); if (N > 5) x.scale(.84, .84);
     x.strokeStyle = col; x.fillStyle = col;
     if (ok) { x.lineWidth = 7; x.beginPath(); x.arc(0, 0, 80, 0, 7); x.stroke(); x.lineWidth = 2.5; x.beginPath(); x.arc(0, 0, 68, 0, 7); x.stroke(); }
     else { x.lineWidth = 4; x.setLineDash([12, 10]); x.beginPath(); x.arc(0, 0, 78, 0, 7); x.stroke(); x.setLineDash([]); }
     x.textAlign = "center"; x.font = `700 58px ${serif}`; x.fillText(r.score, 0, 12);
     x.font = `700 20px ${mono}`; x.fillText(ok ? (r.score === 100 ? "PERFECT" : "STAMPED") : "NO STAMP", 0, 44);
-    x.font = `700 18px ${mono}`; x.fillText("STOP " + (i + 1) + (C.weight(i, E.mode) > 1 ? " ×" + C.weight(i, E.mode) : ""), 0, -34);
+    x.font = `700 18px ${mono}`; x.fillText((E.trip[i]?.kind === "picture" ? "PICTURE" : "STOP " + (i + 1)) + (C.weight(i, E.mode, N) > 1 ? " ×" + C.weight(i, E.mode, N) : ""), 0, -34);
     x.restore();
   });
   // total
-  const tot = C.totalOf(E.results, E.mode), n = E.results.filter(r => r.score >= C.STAMP_AT).length, st = C.streak(S);
+  const N = E.results.length, tot = C.totalOf(E.results, E.mode, N), n = E.results.filter(r => r.score >= C.STAMP_AT).length, st = C.streak(S);
   x.textAlign = "left"; x.fillStyle = INK; x.font = `700 230px ${serif}`; x.fillText(tot, 76, 900);
-  const tw = x.measureText(String(tot)).width; x.font = `700 64px ${serif}`; x.fillStyle = MUTED; x.fillText("/ " + C.maxTotal(E.mode), 100 + tw, 900);
+  const tw = x.measureText(String(tot)).width; x.font = `700 64px ${serif}`; x.fillStyle = MUTED; x.fillText("/ " + C.maxTotal(E.mode, N), 100 + tw, 900);
   x.fillStyle = INK; x.font = `44px ${serif}`;
-  const bits = [`${n} of 5 stamps`]; if (st > 1) bits.push(`${st}-day streak`);
+  const bits = [`${n} of ${N} stamps`]; if (st > 1) bits.push(`${st}-day streak`);
   x.fillText(bits.join("  ·  "), 82, 990);
   const nc = Object.keys(S.stamps).length; x.fillText(`${nc} countr${nc === 1 ? "y" : "ies"} in my passport`, 82, 1052);
   x.fillStyle = RED; x.font = `700 32px ${mono}`; x.fillText("FIVE STOPS AROUND THE WORLD, EVERY DAY", 82, 1180);
@@ -212,7 +217,7 @@ function drawCard(E) {
 
 // ================= GROUPS =================
 function myRow(E, grp) {
-  return { day: E.day, grp, name: S.name, mode: E.mode, score: C.totalOf(E.results, E.mode), stamps: E.results.filter(r => r.score >= C.STAMP_AT).length, detail: E.results.map(r => r.score) };
+  return { day: E.day, grp, name: S.name, mode: E.mode, score: C.totalOf(E.results, E.mode, E.results.length), stamps: E.results.filter(r => r.score >= C.STAMP_AT).length, detail: E.results.map(r => r.score) };
 }
 function submitAll() {
   const E = endData(); if (!E || E.practice || !S.name) return;
@@ -224,7 +229,7 @@ async function boardHTML(grp, E, withLeave) {
   if (!rows) rows = mine ? [mine] : [];
   else if (mine && !rows.some(r => r.name === mine.name && r.mode === mine.mode)) rows.push(mine);
   const by = m => rows.filter(r => r.mode === m).sort((a, b) => b.score - a.score);
-  const list = m => { const rs = by(m); return rs.length ? `<div class="tag">${MODE_NAME[m]} · out of ${C.maxTotal(m)}</div><ol>${rs.map((r, i) => `<li class="${S.name && r.name === S.name ? "me" : ""}"><span class="n">${i + 1}</span>${esc(r.name)}<b>${r.score}</b></li>`).join("")}</ol>` : ""; };
+  const list = m => { const rs = by(m); return rs.length ? `<div class="tag">${MODE_NAME[m]} · out of ${C.maxTotal(m, C.tripFor(today()).length)}</div><ol>${rs.map((r, i) => `<li class="${S.name && r.name === S.name ? "me" : ""}"><span class="n">${i + 1}</span>${esc(r.name)}<b>${r.score}</b></li>`).join("")}</ol>` : ""; };
   const body = list("navigator") + list("explorer") || `<p class="fine">Nobody has finished today's trip yet.</p>`;
   return `<div class="card board" style="margin-top:10px"><div class="hd"><h3>${esc(grp)} · today</h3>${withLeave ? `<button class="x" data-leave="${esc(grp)}">leave</button>` : ""}</div>${body}</div>`;
 }
@@ -270,6 +275,7 @@ document.addEventListener("click", e => {
 document.querySelectorAll(".modepick button").forEach(b => b.onclick = () => { if (b.disabled) return; S.mode = b.dataset.mode; C.save(S); renderHome(); });
 $("#playBtn").onclick = () => startTrip(false);
 $("#lockBtn").onclick = lock;
+$("#gPicWrap").onclick = () => $("#gPicWrap").classList.toggle("big");
 $("#bonusBtn").onclick = () => startTrip(true);
 $("#zin").onclick = () => globe.zoomBy(1.6);
 $("#zout").onclick = () => globe.zoomBy(1 / 1.6);

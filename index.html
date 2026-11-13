@@ -43,7 +43,7 @@
     <div class="home-globe"><canvas id="homeGlobe"></canvas></div>
     <div class="modepick" role="group" aria-label="Difficulty">
       <button data-mode="explorer"><b>Explorer</b><span>A hint each stop. 500 points.</span></button>
-      <button data-mode="navigator"><b>Navigator</b><span>No hints. Hard stops count triple.</span></button>
+      <button data-mode="navigator"><b>Navigator</b><span>No hints. Hard stops count more.</span></button>
     </div>
     <button class="btn primary" id="playBtn">Start today's trip</button>
     <div class="statrow">
@@ -73,6 +73,7 @@
       </div>
       <div class="stop">Stop<b id="gStop">1/5</b></div>
     </div>
+    <figure class="picq" id="gPicWrap" hidden><img id="gPic" alt="A picture of a place somewhere in the world"><figcaption id="gPicCredit"></figcaption></figure>
     <div class="mapwrap">
       <canvas id="globe"></canvas>
       <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button></div>
@@ -151,9 +152,10 @@
     <li><b>Spin and zoom the globe,</b> tap where you think the place is, then lock in your guess.</li>
     <li><b>The closer you are, the more points.</b> A perfect 100 means your pin is right on the spot, and it is rare.</li>
     <li><b>Score 70 or better</b> and that country stamps your passport for good.</li>
+    <li><b>The last stop is a picture.</b> No name, just a photo. Work out where in the world it was taken.</li>
     <li><b>Learn something at every stop,</b> then share your page with your family or class.</li>
   </ol>
-  <p class="fine"><b>Explorer</b> gives a hint at each stop and scores gently. <b>Navigator</b> gives no hints, and the last three stops are worth double and triple.</p>
+  <p class="fine"><b>Explorer</b> gives a hint at each stop and scores gently. <b>Navigator</b> gives no hints, and the harder stops are worth double and triple.</p>
   <button class="btn primary" id="howClose">Got it</button>
 </dialog>
 <div class="toast" id="toast" hidden></div>
