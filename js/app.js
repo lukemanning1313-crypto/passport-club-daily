@@ -144,19 +144,20 @@ function showEnd() {
   $("#reviewBtn").hidden = false;
   renderEndBoards(E);
 }
+// One message, like a text you'd type: the link and the score together, so a group chat gets one bubble per person.
+// The link sits at the start of a line with words after it, which keeps Messages from splitting it into its own preview bubble.
+const mark = n => n === 100 ? "🎯" : n >= 90 ? "🔥" : n >= 70 ? "🛂" : n >= 50 ? "🧭" : n >= 30 ? "✈️" : n >= 10 ? "🌊" : "🛸";
+const siteUrl = () => (location.host + location.pathname).replace(/\/(index\.html)?$/, "");
 function shareText(E) {
   const tot = C.totalOf(E.results, E.mode), n = E.results.filter(r => r.score >= C.STAMP_AT).length, st = C.streak(S);
-  const dots = E.results.map(r => (r.score === 100 ? "⭐" : r.score >= C.STAMP_AT ? "🟢" : r.score >= 40 ? "🟡" : "🔴") + r.score).join(" ");
-  return `Passport Club Daily #${E.day + 1} · ${MODE_NAME[E.mode]}\n${dots}\n${tot}/${C.maxTotal(E.mode)} · ${n} stamp${n === 1 ? "" : "s"}${st > 1 ? ` · 🔥${st}` : ""}\n${location.origin + location.pathname}`;
+  const line = E.results.map(r => r.score + mark(r.score)).join(" ");
+  const tail = [`${tot}/${C.maxTotal(E.mode)}`, `🛂 ${n} stamp${n === 1 ? "" : "s"}`]; if (st > 1) tail.push(`🔥 ${st} days`);
+  return `${siteUrl()} Trip #${E.day + 1} ${E.mode === "explorer" ? "🎒 Explorer" : "🧭 Navigator"}\n${line}\n${tail.join(" · ")}`;
 }
 async function share() {
-  const E = showEnd.E, text = shareText(E);
-  try {
-    const blob = await new Promise(r => showEnd.cv.toBlob(r, "image/png"));
-    const file = new File([blob], `passport-club-trip-${E.day + 1}.png`, { type: "image/png" });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text }); return; }
-    if (navigator.share) { await navigator.share({ text }); return; }
-  } catch (e) { if (e && e.name === "AbortError") return; }
+  const text = shareText(showEnd.E);
+  try { if (navigator.share) { await navigator.share({ text }); return; } }
+  catch (e) { if (e && e.name === "AbortError") return; }
   copyText();
 }
 async function copyText() {
@@ -200,9 +201,9 @@ function drawCard(E) {
   x.fillStyle = INK; x.font = `44px ${serif}`;
   const bits = [`${n} of 5 stamps`]; if (st > 1) bits.push(`${st}-day streak`);
   x.fillText(bits.join("  ·  "), 82, 990);
-  x.fillText(`${Object.keys(S.stamps).length} countries in my passport`, 82, 1052);
+  const nc = Object.keys(S.stamps).length; x.fillText(`${nc} countr${nc === 1 ? "y" : "ies"} in my passport`, 82, 1052);
   x.fillStyle = RED; x.font = `700 32px ${mono}`; x.fillText("FIVE STOPS AROUND THE WORLD, EVERY DAY", 82, 1180);
-  x.fillStyle = INK; x.font = `700 34px ${mono}`; x.fillText((location.host + location.pathname).replace(/\/(index\.html)?$/, "").toUpperCase(), 82, 1232);
+  x.fillStyle = INK; const url = siteUrl().toUpperCase(); let fs = 34; do { x.font = `700 ${fs}px ${mono}`; fs -= 2; } while (x.measureText(url).width > W - 170 && fs > 14); x.fillText(url, 82, 1232);
   return cv;
 }
 
