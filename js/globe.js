@@ -72,7 +72,12 @@ export class Globe {
       const d0 = (((this.target[0] - this.rot[0]) + 540) % 360) - 180, d1 = this.target[1] - this.rot[1];
       this.rot = [this.rot[0] + d0 * .12, this.rot[1] + d1 * .12, 0];
       if (Math.abs(d0) < .15 && Math.abs(d1) < .15) this.target = null; else again = true;
-    } else if (this.spin && !this.ptrs.size) { this.rot = [this.rot[0] + .15, this.rot[1], 0]; again = true; }
+    } else if (this.spin && !this.ptrs.size) {
+      // the idle spin on the start screen is decoration: draw it about 20 times a second so it doesn't cook the phone
+      const now = performance.now();
+      if (now - (this.lastSpin || 0) < 50) { this.kick(); return; }
+      this.rot = [this.rot[0] + .4 * Math.min(3, (now - (this.lastSpin || now)) / 50 || 1), this.rot[1], 0]; this.lastSpin = now; again = true;
+    }
     if (this.pin && !rv) { this.pulse += .06; again = true; }
     const moving = again || this.ptrs.size > 0;
     if (this.W && this.H && WORLD) this.draw(moving);

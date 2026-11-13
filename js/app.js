@@ -106,7 +106,7 @@ function revealStop(animate) {
 function renderSheet() {
   const p = G.trip[G.idx], r = G.results[G.idx], w = C.weight(G.idx, G.mode, G.trip.length), box = $("#sheet"), open = box.classList.contains("open");
   const last = G.idx >= lastIdx(), ph = PHOTOS[p.photo || p.id];
-  box.innerHTML = `
+  box.innerHTML = `<div class="sheet-body">
     <div class="place">${ph ? `<img class="thumb" src="img/${ph.file}" alt="">` : `<div class="flag">${p.flag}</div>`}
       <div><b>${ph ? p.flag + " " : ""}${esc(p.name)}</b><span>${esc(p.sub)} · ${C.milesText(r)}</span></div>
       <div class="score ${r.score < 50 ? "low" : ""}">${r.score}<small>${w > 1 ? `×${w} = ${r.score * w}` : "OF 100"}</small></div></div>
@@ -116,11 +116,12 @@ function renderSheet() {
       ${ph ? `<figure class="photo"><img src="img/${ph.file}" alt="${esc(ph.article)}" loading="lazy"><figcaption><b>${esc(ph.article)}</b> · Photo: ${esc(ph.artist || "Wikimedia Commons")}, ${esc(ph.license)}, via Wikimedia Commons</figcaption></figure>` : ""}
       <ul class="facts">${p.fast.map(f => `<li><span>${esc(f[0])}</span><div>${esc(f[1])}</div></li>`).join("")}</ul>
       ${p.more.map(m => `<p class="extra">${esc(m)}</p>`).join("")}
-    </div>
+    </div></div>
     <div class="btns"><button class="btn" id="moreBtn">${open ? "Show the globe" : "Tell me more"}</button>
       <button class="btn primary" id="nextBtn">${last ? (G.review ? "Done" : "My passport page") : "Next stop"}</button></div>`;
   box.hidden = false;
   $("#moreBtn").onclick = () => { box.classList.toggle("open"); renderSheet(); };
+  box.querySelector(".sheet-body").scrollTop = 0;
   $("#nextBtn").onclick = nextStop;
 }
 const lastIdx = () => (G.review ? G.results.length : G.trip.length) - 1;
