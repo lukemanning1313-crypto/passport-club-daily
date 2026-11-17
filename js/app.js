@@ -10,6 +10,8 @@ const MODE_NAME = { explorer: "Explorer", navigator: "Navigator" };
 
 let S = C.load(), world = null, globe = null, homeGlobe = null, G = null;
 const today = () => C.dayIndex();
+// which day's rules a trip is scored under: bonus trips always use the current rules
+const wd = X => X.practice ? 99999 : X.day;
 
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 2200); }
 function go(screen) {
@@ -30,7 +32,7 @@ function renderHome() {
   $("#playBtn").textContent = day?.done ? "See today's passport page" : started ? `Keep going · stop ${day.results.length + 1} of ${C.tripFor(d).length}` : "Start today's trip";
   $("#stStreak").textContent = C.streak(S, d);
   $("#stCountries").textContent = Object.keys(S.stamps).length;
-  const best = Object.values(S.days).filter(x => x.done).map(x => Math.round(100 * C.totalOf(x.results, x.mode, x.results.length) / C.maxTotal(x.mode, x.results.length)));
+  const best = Object.entries(S.days).filter(([, x]) => x.done).map(([k, x]) => Math.round(100 * C.totalOf(x.results, x.mode, x.results.length, +k) / C.maxTotal(x.mode, x.results.length, +k)));
   $("#stBest").textContent = best.length ? Math.max(...best) + "%" : "–";
 }
 
@@ -45,7 +47,7 @@ function startTrip(practice = false) {
   go("game"); renderStop();
 }
 function renderStop() {
-  const p = G.trip[G.idx], w = C.weight(G.idx, G.mode, G.trip.length), pic = p.kind === "picture", ph0 = PHOTOS[p.photo || p.id];
+  const p = G.trip[G.idx], w = C.weight(G.idx, G.mode, G.trip.length, wd(G)), pic = p.kind === "picture", ph0 = PHOTOS[p.photo || p.id];
   $("#gMode").textContent = MODE_NAME[G.mode];
   $("#gTrip").textContent = G.review ? " · Looking back" : G.practice ? " · Bonus" : "";
   $("#gKind").innerHTML = esc(KIND[p.kind]) + (w > 1 ? ` <span class="mult">×${w} points</span>` : "");
@@ -79,8 +81,8 @@ function renderStrip() {
     return `<div class="stampd ${ok ? "" : "miss"}" style="--c:${INKS[i % 5]};--rot:${ROTS[i % 5]}deg" title="${esc(p.country)}">${p.flag}</div>`;
   }).join("");
   $("#gStamps").style.gridTemplateColumns = `repeat(${G.trip.length}, 34px)`;
-  $("#gTotal").textContent = C.totalOf(G.results, G.mode, G.trip.length);
-  $("#gMax").textContent = "/ " + C.maxTotal(G.mode, G.trip.length);
+  $("#gTotal").textContent = C.totalOf(G.results, G.mode, G.trip.length, wd(G));
+  $("#gMax").textContent = "/ " + C.maxTotal(G.mode, G.trip.length, wd(G));
   const n = G.results.filter(r => r && r.score >= C.STAMP_AT).length;
   $("#gNote").textContent = `${n} stamp${n === 1 ? "" : "s"}`;
 }
@@ -93,7 +95,7 @@ function onTap(p) {
 }
 function lock() {
   if (!G.pending || G.revealed) return;
-  const p = G.trip[G.idx], r = C.scoreGuess(p, G.pending, G.mode, world);
+  const p = G.trip[G.idx], r = C.scoreGuess(p, G.pending, G.mode, world, wd(G));
   r.g = [+G.pending[0].toFixed(2), +G.pending[1].toFixed(2)];
   G.results[G.idx] = r;
   if (!G.practice) { S.days[G.day] = { mode: G.mode, results: G.results, done: false }; C.save(S); }
@@ -111,13 +113,13 @@ function revealStop(animate) {
   renderStrip();
 }
 function renderSheet() {
-  const p = G.trip[G.idx], r = G.results[G.idx], w = C.weight(G.idx, G.mode, G.trip.length), box = $("#sheet"), open = box.classList.contains("open");
+  const p = G.trip[G.idx], r = G.results[G.idx], w = C.weight(G.idx, G.mode, G.trip.length, wd(G)), box = $("#sheet"), open = box.classList.contains("open");
   const last = G.idx >= lastIdx(), ph = PHOTOS[p.photo || p.id];
   box.innerHTML = `<div class="sheet-body">
     <div class="place">${ph ? `<img class="thumb" src="img/${ph.file}" alt="">` : `<div class="flag">${p.flag}</div>`}
       <div><b>${ph ? p.flag + " " : ""}${esc(p.name)}</b><span>${esc(p.sub)} · ${C.milesText(r)}</span></div>
       <div class="score ${r.score < 50 ? "low" : ""}">${r.score}<small>${w > 1 ? `×${w} = ${r.score * w}` : "OF 100"}</small></div></div>
-    ${r.inside || r.where === p.country ? "" : `<p class="landed">Your pin landed ${r.where ? "in " + esc(r.where) : "in open water"}.</p>`}
+    ${r.inside ? "" : r.country ? `<p class="landed good">Right country. That is worth at least ${G.mode === "explorer" ? 80 : 75}.</p>` : r.where === p.country ? "" : `<p class="landed">Your pin landed ${r.where ? "in " + esc(r.where) : "in open water"}.</p>`}
     <p class="wow">${esc(p.wow)}</p>
     <div class="morebox">
       ${ph ? `<figure class="photo"><img src="img/${ph.file}" alt="${esc(ph.article)}" loading="lazy"><figcaption><b>${esc(ph.article)}</b> · Photo: ${esc(ph.artist || "Wikimedia Commons")}, ${esc(ph.license)}, via Wikimedia Commons</figcaption></figure>` : ""}
@@ -165,9 +167,9 @@ function showEnd() {
 const mark = n => n === 100 ? "🎯" : n >= 90 ? "🔥" : n >= 70 ? "🛂" : n >= 50 ? "🧭" : n >= 30 ? "✈️" : n >= 10 ? "🌊" : "🛸";
 const siteUrl = () => (location.host + location.pathname).replace(/\/(index\.html)?$/, "");
 function shareText(E) {
-  const N = E.results.length, tot = C.totalOf(E.results, E.mode, N), n = E.results.filter(r => r.score >= C.STAMP_AT).length, st = C.streak(S);
+  const N = E.results.length, tot = C.totalOf(E.results, E.mode, N, wd(E)), n = E.results.filter(r => r.score >= C.STAMP_AT).length, st = C.streak(S);
   const line = E.results.map((r, i) => (E.trip[i]?.kind === "picture" ? "📸" : "") + r.score + mark(r.score)).join(" ");
-  const tail = [`${tot}/${C.maxTotal(E.mode, N)}`, `🛂 ${n} stamp${n === 1 ? "" : "s"}`]; if (st > 1) tail.push(`🔥 ${st} days`);
+  const tail = [`${tot}/${C.maxTotal(E.mode, N, wd(E))}`, `🛂 ${n} stamp${n === 1 ? "" : "s"}`]; if (st > 1) tail.push(`🔥 ${st} days`);
   return `${siteUrl()} Trip #${E.day + 1} ${E.mode === "explorer" ? "🎒 Explorer" : "🧭 Navigator"}\n${line}\n${tail.join(" · ")}`;
 }
 async function share() {
@@ -207,13 +209,13 @@ function drawCard(E) {
     else { x.lineWidth = 4; x.setLineDash([12, 10]); x.beginPath(); x.arc(0, 0, 78, 0, 7); x.stroke(); x.setLineDash([]); }
     x.textAlign = "center"; x.font = `700 58px ${serif}`; x.fillText(r.score, 0, 12);
     x.font = `700 20px ${mono}`; x.fillText(ok ? (r.score === 100 ? "PERFECT" : "STAMPED") : "NO STAMP", 0, 44);
-    x.font = `700 18px ${mono}`; x.fillText((E.trip[i]?.kind === "picture" ? "PICTURE" : "STOP " + (i + 1)) + (C.weight(i, E.mode, N) > 1 ? " ×" + C.weight(i, E.mode, N) : ""), 0, -34);
+    x.font = `700 18px ${mono}`; x.fillText((E.trip[i]?.kind === "picture" ? "PICTURE" : "STOP " + (i + 1)) + (C.weight(i, E.mode, N, wd(E)) > 1 ? " ×" + C.weight(i, E.mode, N, wd(E)) : ""), 0, -34);
     x.restore();
   });
   // total
-  const N = E.results.length, tot = C.totalOf(E.results, E.mode, N), n = E.results.filter(r => r.score >= C.STAMP_AT).length, st = C.streak(S);
+  const N = E.results.length, tot = C.totalOf(E.results, E.mode, N, wd(E)), n = E.results.filter(r => r.score >= C.STAMP_AT).length, st = C.streak(S);
   x.textAlign = "left"; x.fillStyle = INK; x.font = `700 230px ${serif}`; x.fillText(tot, 76, 900);
-  const tw = x.measureText(String(tot)).width; x.font = `700 64px ${serif}`; x.fillStyle = MUTED; x.fillText("/ " + C.maxTotal(E.mode, N), 100 + tw, 900);
+  const tw = x.measureText(String(tot)).width; x.font = `700 64px ${serif}`; x.fillStyle = MUTED; x.fillText("/ " + C.maxTotal(E.mode, N, wd(E)), 100 + tw, 900);
   x.fillStyle = INK; x.font = `44px ${serif}`;
   const bits = [`${n} of ${N} stamps`]; if (st > 1) bits.push(`${st}-day streak`);
   x.fillText(bits.join("  ·  "), 82, 990);
@@ -225,7 +227,7 @@ function drawCard(E) {
 
 // ================= GROUPS =================
 function myRow(E, grp) {
-  return { day: E.day, grp, name: S.name, mode: E.mode, score: C.totalOf(E.results, E.mode, E.results.length), stamps: E.results.filter(r => r.score >= C.STAMP_AT).length, detail: E.results.map(r => r.score) };
+  return { day: E.day, grp, name: S.name, mode: E.mode, score: C.totalOf(E.results, E.mode, E.results.length, wd(E)), stamps: E.results.filter(r => r.score >= C.STAMP_AT).length, detail: E.results.map(r => r.score) };
 }
 function submitAll() {
   const E = endData(); if (!E || E.practice || !S.name) return;
@@ -237,7 +239,7 @@ async function boardHTML(grp, E, withLeave) {
   if (!rows) rows = mine ? [mine] : [];
   else if (mine && !rows.some(r => r.name === mine.name && r.mode === mine.mode)) rows.push(mine);
   const by = m => rows.filter(r => r.mode === m).sort((a, b) => b.score - a.score);
-  const list = m => { const rs = by(m); return rs.length ? `<div class="tag">${MODE_NAME[m]} · out of ${C.maxTotal(m, C.tripFor(today()).length)}</div><ol>${rs.map((r, i) => `<li class="${S.name && r.name === S.name ? "me" : ""}"><span class="n">${i + 1}</span>${esc(r.name)}<b>${r.score}</b></li>`).join("")}</ol>` : ""; };
+  const list = m => { const rs = by(m); return rs.length ? `<div class="tag">${MODE_NAME[m]} · out of ${C.maxTotal(m, C.tripFor(today()).length, today())}</div><ol>${rs.map((r, i) => `<li class="${S.name && r.name === S.name ? "me" : ""}"><span class="n">${i + 1}</span>${esc(r.name)}<b>${r.score}</b></li>`).join("")}</ol>` : ""; };
   const body = list("navigator") + list("explorer") || `<p class="fine">Nobody has finished today's trip yet.</p>`;
   return `<div class="card board" style="margin-top:10px"><div class="hd"><h3>${esc(grp)} · today</h3>${withLeave ? `<button class="x" data-leave="${esc(grp)}">leave</button>` : ""}</div>${body}</div>`;
 }

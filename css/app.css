@@ -101,6 +101,7 @@ h1{font-family:var(--display);font-size:30px;line-height:1.05;margin:10px 0 2px}
 .score{margin-left:auto;text-align:center;font-family:var(--display);font-weight:700;font-size:28px;line-height:1;color:var(--green);flex:none}
 .score.low{color:var(--red)}
 .score small{display:block;font-family:var(--stamp);font-size:10px;letter-spacing:.1em;color:var(--muted);font-weight:400;margin-top:3px;white-space:nowrap}
+.landed.good{color:var(--green)}
 .landed{font-size:13.5px;line-height:1.4;color:var(--red);margin:8px 0 0;font-weight:600}
 .wow{font-family:var(--display);font-size:16.5px;line-height:1.35;margin:9px 0 0}
 .morebox{display:none}
