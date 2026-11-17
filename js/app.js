@@ -140,6 +140,10 @@ function nextStop() {
 }
 function finish() {
   if (G.review) { showEnd(); return; }
+  if (!G.logged) {
+    G.logged = true;
+    C.logPlay({ day: G.day, mode: G.mode, bonus: !!G.practice, places: G.trip.map(p => p.id), scores: G.results.map(r => r.score), kms: G.results.map(r => r.km), total: C.totalOf(G.results, G.mode, G.trip.length, wd(G)) });
+  }
   if (!G.practice) {
     const day = S.days[G.day];
     if (!day.done) { day.done = true; C.awardStamps(S, G.day, G.trip, G.results); C.save(S); submitAll(); }

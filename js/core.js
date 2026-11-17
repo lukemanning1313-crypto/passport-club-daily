@@ -124,9 +124,15 @@ const hdr = () => ({ apikey: cfg().key, Authorization: "Bearer " + cfg().key, "C
 export async function submitScore(row) {
   if (!backendOn()) return false;
   try {
-    const r = await fetch(cfg().url + "/rest/v1/pcd_scores?on_conflict=day,grp,name,mode", { method: "POST", headers: { ...hdr(), Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(row) });
+    const r = await fetch(cfg().url + "/rest/v1/pcd_scores?on_conflict=day,grp,name,mode", { method: "POST", headers: { ...hdr(), Prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify(row) });
     return r.ok;
   } catch { return false; }
+}
+// Anonymous play log: which places, how far off, what score. No name, no device id. Used to find unfair places.
+export async function logPlay(row) {
+  if (!backendOn()) return false;
+  try { const r = await fetch(cfg().url + "/rest/v1/pcd_plays", { method: "POST", headers: { ...hdr(), Prefer: "return=minimal" }, body: JSON.stringify(row), keepalive: true }); return r.ok; }
+  catch { return false; }
 }
 export async function board(day, grp) {
   if (!backendOn()) return null;
