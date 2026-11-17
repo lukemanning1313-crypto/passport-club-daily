@@ -23,7 +23,12 @@ function shuffled(arr, seed) { const a = [...arr], r = rng(seed); for (let i = a
 const TIERS = [1, 2, 3].map(t => PLACES.filter(p => p.tier === t).sort((a, b) => a.id < b.id ? -1 : 1));
 // The picture stop: a photo with no name. Starts with Trip #2; Trip #1 was played as five stops and stays that way.
 export const PIC_FROM = 1;
-const PICS = PLACES.filter(p => PHOTOS[p.id] && PHOTOS[p.id].lon !== undefined).sort((a, b) => a.id < b.id ? -1 : 1);
+// Only photos of one-of-a-kind sights are used for the picture stop. A volcano, a beach or a forest could be
+// anywhere, so those never appear here; they still show on the answer card for their own place.
+const ICONIC = new Set(["peru", "cairo", "paris", "tokyo", "rome", "angkor-wat", "taj-mahal", "great-wall", "petra", "easter-island",
+  "stonehenge", "parthenon", "neuschwanstein", "mount-kilimanjaro", "ha-long-bay", "turkey", "singapore", "madagascar", "switzerland",
+  "south-africa", "great-blue-hole", "tikal", "spain", "ireland", "austria", "bangkok", "bhutan"]);
+const PICS = PLACES.filter(p => ICONIC.has(p.id) && PHOTOS[p.id] && PHOTOS[p.id].lon !== undefined).sort((a, b) => a.id < b.id ? -1 : 1);
 function picItem(place) {
   const ph = PHOTOS[place.id];
   return { ...place, id: "pic-" + place.id, photo: place.id, kind: "picture", q: "Where in the world is this?", name: ph.article, sub: place.country, lon: ph.lon, lat: ph.lat, hint: "It is in " + place.continent + "." };
